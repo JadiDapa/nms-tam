@@ -1,0 +1,251 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELED
+}
+
+enum PaymentKind {
+  ACTIVATION
+  RENEWAL
+  EXTRA_SLOTS
+  ADJUSTMENT
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CASH
+  OTHER
+}
+
+enum RequestKind {
+  PLAN_CHANGE
+  EXTRA_SLOTS
+  RENEWAL
+}
+
+enum RequestStatus {
+  OPEN
+  DONE
+  REJECTED
+}
+
+enum DeviceStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum DisabledBy {
+  SUBSCRIPTION
+  USER
+}
+
+enum ResourceKind {
+  CREDENTIAL
+  CHANNEL
+  ALERT_RULE
+}
+
+// A client company. Every USER belongs to exactly one; ADMINs (our staff) belong to none.
+model Organization {
+  id        Int       @id @default(autoincrement())
+  name      String
+  status    OrgStatus @default(ACTIVE)
+  note      String?
+  createdAt DateTime  @default(now())
+
+  users         User[]
+  subscription  Subscription?
+  payments      Payment[]
+  requests      BillingRequest[]
+  devices       Device[]
+  resources     EngineResource[]
+  analyses      IncidentAnalysis[]
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  // null until the invited person signs up; then linked to the Clerk user
+  clerkId   String?  @unique
+  email     String   @unique
+  name      String?
+  role      Role     @default(USER)
+  active    Boolean  @default(true)
+  orgId     Int?
+  org       Organization? @relation(fields: [orgId], references: [id])
+  createdAt DateTime @default(now())
+
+  requests  BillingRequest[]
+  devices   Device[]
+  payments  Payment[]
+}
+
+// Amounts are whole Rupiah (IDR has no decimals).
+model Plan {
+  id                 Int     @id @default(autoincrement())
+  name               String
+  priceMonthly       Int
+  extraSlotPrice     Int
+  maxDevices         Int
+  maxUsers           Int
+  minPollIntervalSec Int     @default(30)
+  isActive           Boolean @default(true)
+  sortOrder          Int     @default(0)
+  createdAt          DateTime @default(now())
+
+  subscriptions Subscription[]
+}
+
+// One per organization. It is simply "this plan, paid until currentPeriodEnd".
+model Subscription {
+  id               Int                @id @default(autoincrement())
+  orgId            Int                @unique
+  org              Organization       @relation(fields: [orgId], references: [id])
+  planId           Int
+  plan             Plan               @relation(fields: [planId], references: [id])
+  status           SubscriptionStatus @default(ACTIVE)
+  currentPeriodEnd DateTime
+  // additional device slots bought on top of the plan
+  extraSlots       Int                @default(0)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  payments Payment[]
+}
+
+// The evidence/receipt of one payment. Prices are copied in so later plan edits never change an old receipt.
+model Payment {
+  id             Int           @id @default(autoincrement())
+  receiptNumber  String        @unique
+  orgId          Int
+  org            Organization  @relation(fields: [orgId], references: [id])
+  subscriptionId Int
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id])
+  kind           PaymentKind
+  amount         Int
+  method         PaymentMethod
+  paidAt         DateTime
+  months         Int           @default(0)
+  coversFrom     DateTime?
+  coversUntil    DateTime?
+  reference      String
+  evidenceUrl    String?
+  note           String?
+  planName       String
+  planPrice      Int
+  extraSlots     Int
+  extraSlotPrice Int
+  recordedById   Int
+  recordedBy     User          @relation(fields: [recordedById], references: [id])
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime      @default(now())
+
+  @@index([orgId])
+}
+
+model ReceiptSequence {
+  year Int @id
+  last Int @default(0)
+}
+
+// A client asking us for something (more slots, another plan, renewal). An admin acts on it.
+model BillingRequest {
+  id            Int           @id @default(autoincrement())
+  orgId         Int
+  org           Organization  @relation(fields: [orgId], references: [id])
+  requestedById Int
+  requestedBy   User          @relation(fields: [requestedById], references: [id])
+  kind          RequestKind
+  planId        Int?
+  slots         Int?
+  message       String?
+  status        RequestStatus @default(OPEN)
+  adminNote     String?
+  createdAt     DateTime      @default(now())
+  resolvedAt    DateTime?
+
+  @@index([orgId])
+}
+
+// Ownership mirror of an engine device. The engine holds the monitoring data; this row says who owns it and counts toward quota.
+model Device {
+  id             Int          @id @default(autoincrement())
+  orgId          Int
+  org            Organization @relation(fields: [orgId], references: [id])
+  engineDeviceId String?      @unique
+  name           String
+  status         DeviceStatus @default(PENDING)
+  disabledBy     DisabledBy?
+  createdById    Int
+  createdBy      User         @relation(fields: [createdById], references: [id])
+  createdAt      DateTime     @default(now())
+  // Where the device stands, for the dashboard map. App-side only: the engine never sees it.
+  latitude       Float?
+  longitude      Float?
+
+  @@index([orgId])
+}
+
+// Ownership mirror of engine credentials / channels / alert rules.
+model EngineResource {
+  id        Int          @id @default(autoincrement())
+  orgId     Int
+  org       Organization @relation(fields: [orgId], references: [id])
+  kind      ResourceKind
+  engineId  String       @unique
+  label     String
+  createdAt DateTime     @default(now())
+
+  @@index([orgId, kind])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  actorId    Int?
+  orgId      Int?
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([orgId])
+  @@index([createdAt])
+}
+
+// The last AI analysis of an engine incident, kept so reopening it costs no new request. Regenerating replaces it.
+model IncidentAnalysis {
+  id             Int          @id @default(autoincrement())
+  orgId          Int
+  org            Organization @relation(fields: [orgId], references: [id])
+  incidentId     String       @unique
+  model          String
+  // the structured answer (summary, reason, confidence, evidence, impact, actions)
+  result         Json
+  // the incident's status when it was analyzed, to tell the reader the analysis may be out of date
+  incidentStatus String
+  createdById    Int?
+  createdAt      DateTime     @default(now())
+
+  @@index([orgId])
+}
