@@ -17,9 +17,6 @@
     "seed": "tsx prisma/seed.ts",
     "seed:export": "tsx scripts/export-seed.ts"
   },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
     "@clerk/backend": "^3.18.1",
