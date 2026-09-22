@@ -1,0 +1,481 @@
+{
+  "organizations": [
+    {
+      "id": 12,
+      "name": "Demo Client",
+      "status": "ACTIVE",
+      "note": "Demo with the two real routers",
+      "createdAt": "2026-09-21T05:52:15.292Z"
+    }
+  ],
+  "users": [
+    {
+      "id": 20,
+      "clerkId": "user_3Jcotg9x1qVbs1kAoPtalnBdGE8",
+      "email": "daffaalthaf25@gmail.com",
+      "name": "Daffa Admin",
+      "role": "ADMIN",
+      "active": true,
+      "orgId": null,
+      "createdAt": "2026-09-21T05:52:15.174Z"
+    },
+    {
+      "id": 21,
+      "clerkId": "user_3Jcothz6cCqQ2e7YXfgSX8fgOZN",
+      "email": "daffaalthaf04@gmail.com",
+      "name": "Daffa Client",
+      "role": "USER",
+      "active": true,
+      "orgId": 12,
+      "createdAt": "2026-09-21T05:52:15.297Z"
+    }
+  ],
+  "plans": [
+    {
+      "id": 11,
+      "name": "Starter (sample)",
+      "priceMonthly": 250000,
+      "extraSlotPrice": 10000,
+      "maxDevices": 25,
+      "maxUsers": 5,
+      "minPollIntervalSec": 30,
+      "isActive": true,
+      "sortOrder": 1,
+      "createdAt": "2026-09-21T05:52:15.282Z"
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": 12,
+      "orgId": 12,
+      "planId": 11,
+      "status": "ACTIVE",
+      "currentPeriodEnd": "2026-10-21T05:52:15.320Z",
+      "extraSlots": 0,
+      "createdAt": "2026-09-21T05:52:15.345Z",
+      "updatedAt": "2026-09-21T05:52:15.345Z"
+    }
+  ],
+  "payments": [
+    {
+      "id": 25,
+      "receiptNumber": "RCP-2026-0001",
+      "orgId": 12,
+      "subscriptionId": 12,
+      "kind": "ACTIVATION",
+      "amount": 250000,
+      "method": "OTHER",
+      "paidAt": "2026-09-21T05:52:15.313Z",
+      "months": 1,
+      "coversFrom": "2026-09-21T05:52:15.320Z",
+      "coversUntil": "2026-10-21T05:52:15.320Z",
+      "reference": "DEMO (not real money)",
+      "evidenceUrl": null,
+      "note": "Demo data",
+      "planName": "Starter (sample)",
+      "planPrice": 250000,
+      "extraSlots": 0,
+      "extraSlotPrice": 10000,
+      "recordedById": 20,
+      "voidedAt": null,
+      "voidReason": null,
+      "createdAt": "2026-09-21T05:52:15.358Z"
+    }
+  ],
+  "receiptSequences": [
+    {
+      "year": 2026,
+      "last": 6
+    }
+  ],
+  "billingRequests": [],
+  "devices": [
+    {
+      "id": 23,
+      "orgId": 12,
+      "engineDeviceId": "5fcf07fa-87df-4bb4-8f9f-b0ae6485d0c1",
+      "name": "BGP-INTEGRA-CCR2116",
+      "status": "ACTIVE",
+      "disabledBy": null,
+      "createdById": 21,
+      "createdAt": "2026-09-21T05:52:15.496Z",
+      "latitude": null,
+      "longitude": null
+    },
+    {
+      "id": 24,
+      "orgId": 12,
+      "engineDeviceId": "181adf93-47b2-4a95-874d-358c8290187f",
+      "name": "RT-POLDA-SUMSEL",
+      "status": "ACTIVE",
+      "disabledBy": null,
+      "createdById": 21,
+      "createdAt": "2026-09-21T05:52:15.641Z",
+      "latitude": null,
+      "longitude": null
+    }
+  ],
+  "engineResources": [
+    {
+      "id": 44,
+      "orgId": 12,
+      "kind": "CREDENTIAL",
+      "engineId": "f7f71e22-7415-452c-90de-52658d9b752e",
+      "label": "BGP-INTEGRA-CCR2116 SNMP",
+      "createdAt": "2026-09-21T05:52:15.461Z"
+    },
+    {
+      "id": 45,
+      "orgId": 12,
+      "kind": "CREDENTIAL",
+      "engineId": "b33ef2d8-8c9f-42ba-9a95-ebd0fa4410ec",
+      "label": "RT-POLDA-SUMSEL SNMP",
+      "createdAt": "2026-09-21T05:52:15.626Z"
+    },
+    {
+      "id": 63,
+      "orgId": 12,
+      "kind": "CHANNEL",
+      "engineId": "806e0ece-f54f-4400-9880-0ecffb469b34",
+      "label": "Telegram - NOC group",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 64,
+      "orgId": 12,
+      "kind": "CHANNEL",
+      "engineId": "7f441b8b-7f03-4f26-b106-e0475e0f14ca",
+      "label": "Telegram - On-call",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 65,
+      "orgId": 12,
+      "kind": "CHANNEL",
+      "engineId": "bcf8a68a-2c29-4486-bded-d6c1db33aa7b",
+      "label": "Slack bridge",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 66,
+      "orgId": 12,
+      "kind": "CHANNEL",
+      "engineId": "f6cc8850-c12f-45a9-816f-65f86b64774e",
+      "label": "PagerDuty",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 67,
+      "orgId": 12,
+      "kind": "ALERT_RULE",
+      "engineId": "62545222-9af7-479c-aacf-6d0ebf0d022f",
+      "label": "High CPU",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 68,
+      "orgId": 12,
+      "kind": "ALERT_RULE",
+      "engineId": "87cdbe85-297c-4608-894e-d35aaac8e6fa",
+      "label": "High memory",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 69,
+      "orgId": 12,
+      "kind": "ALERT_RULE",
+      "engineId": "824abe6d-c337-456d-bf9e-c82f11e666f2",
+      "label": "High latency",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 70,
+      "orgId": 12,
+      "kind": "ALERT_RULE",
+      "engineId": "75aa7987-f311-442f-8e68-074919190d2c",
+      "label": "Packet loss",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 71,
+      "orgId": 12,
+      "kind": "ALERT_RULE",
+      "engineId": "89d241f7-01ef-4a80-8833-3b88937ea9cf",
+      "label": "Latency notice",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 72,
+      "orgId": 12,
+      "kind": "ALERT_RULE",
+      "engineId": "39a9bdfc-e810-455e-a949-1440c6ee7043",
+      "label": "Device unreachable",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 73,
+      "orgId": 12,
+      "kind": "ALERT_RULE",
+      "engineId": "d7315950-088e-4029-b931-982971781464",
+      "label": "SNMP unavailable",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    },
+    {
+      "id": 74,
+      "orgId": 12,
+      "kind": "ALERT_RULE",
+      "engineId": "5d200257-6948-4213-a66f-68e4648e9f5d",
+      "label": "Interface down",
+      "createdAt": "2026-09-21T10:37:37.929Z"
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": 63,
+      "actorId": 21,
+      "orgId": 12,
+      "action": "credential.create",
+      "targetType": "Credential",
+      "targetId": "44",
+      "metadata": {
+        "type": "snmp_v2c",
+        "label": "BGP-INTEGRA-CCR2116 SNMP"
+      },
+      "createdAt": "2026-09-21T05:52:15.465Z"
+    },
+    {
+      "id": 64,
+      "actorId": 21,
+      "orgId": 12,
+      "action": "device.create",
+      "targetType": "Device",
+      "targetId": "23",
+      "metadata": {
+        "host": "103.79.237.33",
+        "name": "BGP-INTEGRA-CCR2116"
+      },
+      "createdAt": "2026-09-21T05:52:15.607Z"
+    },
+    {
+      "id": 65,
+      "actorId": 21,
+      "orgId": 12,
+      "action": "credential.create",
+      "targetType": "Credential",
+      "targetId": "45",
+      "metadata": {
+        "type": "snmp_v2c",
+        "label": "RT-POLDA-SUMSEL SNMP"
+      },
+      "createdAt": "2026-09-21T05:52:15.628Z"
+    },
+    {
+      "id": 66,
+      "actorId": 21,
+      "orgId": 12,
+      "action": "device.create",
+      "targetType": "Device",
+      "targetId": "24",
+      "metadata": {
+        "host": "103.79.236.29",
+        "name": "RT-POLDA-SUMSEL"
+      },
+      "createdAt": "2026-09-21T05:52:15.666Z"
+    },
+    {
+      "id": 78,
+      "actorId": 21,
+      "orgId": 12,
+      "action": "incident.analyze",
+      "targetType": "Incident",
+      "targetId": "4e6d1583-e4e7-4582-b17d-77f6562c3d4a",
+      "metadata": null,
+      "createdAt": "2026-09-22T03:04:57.309Z"
+    },
+    {
+      "id": 79,
+      "actorId": 21,
+      "orgId": 12,
+      "action": "incident.analyze",
+      "targetType": "Incident",
+      "targetId": "18505aae-c565-4eb4-aa87-e3b91af5d5a5",
+      "metadata": null,
+      "createdAt": "2026-09-22T03:05:32.884Z"
+    },
+    {
+      "id": 80,
+      "actorId": 21,
+      "orgId": 12,
+      "action": "incident.analyze",
+      "targetType": "Incident",
+      "targetId": "95137ef5-96e5-4d99-a1a2-5f30ad528cb3",
+      "metadata": null,
+      "createdAt": "2026-09-22T05:25:15.953Z"
+    }
+  ],
+  "incidentAnalyses": [
+    {
+      "id": 1,
+      "orgId": 12,
+      "incidentId": "4e6d1583-e4e7-4582-b17d-77f6562c3d4a",
+      "model": "gemini-3.6-flash",
+      "result": {
+        "impact": {
+          "level": "medium",
+          "description": "SNMP telemetry and monitoring visibility are lost for RT-POLDA-SUMSEL while the device suffers performance degradation."
+        },
+        "reason": "High memory utilization (93.6%) on RT-POLDA-SUMSEL combined with high ICMP latency (343.8 ms) and multiple down interfaces is starving or delaying the SNMP process response, causing requests to time out after 3000 ms.",
+        "actions": [
+          {
+            "step": "SSH into RT-POLDA-SUMSEL to inspect SNMP process status, CPU usage, and top memory-consuming processes.",
+            "priority": "now"
+          },
+          {
+            "step": "Check physical and logical interfaces to resolve the open interface down alerts and reduce link latency.",
+            "priority": "now"
+          },
+          {
+            "step": "Verify network firewalls and ACLs between the collector and RT-POLDA-SUMSEL to confirm UDP port 161 traffic is permitted.",
+            "priority": "soon"
+          },
+          {
+            "step": "Plan a reboot or clear inactive control plane buffers during a maintenance window if high memory usage persists.",
+            "priority": "later"
+          }
+        ],
+        "summary": "Router RT-POLDA-SUMSEL is failing to respond to SNMP polling requests due to device resource exhaustion and network degradation. The device is currently experiencing elevated memory usage and high latency.",
+        "evidence": [
+          {
+            "signal": "SNMP polling",
+            "observation": "SNMP request timed out after 3000 ms (2 retries) on RT-POLDA-SUMSEL."
+          },
+          {
+            "signal": "Memory utilization",
+            "observation": "Memory reading is 93.6%, exceeding the 90% threshold."
+          },
+          {
+            "signal": "ICMP latency",
+            "observation": "ICMP latency reading is 343.8 ms, exceeding the 100 ms threshold."
+          },
+          {
+            "signal": "Interface status",
+            "observation": "Two interface down alerts triggered on 2026-09-20 remain in OPEN and ACKNOWLEDGED states."
+          }
+        ],
+        "confidence": {
+          "score": 85,
+          "rationale": "Strong concurrent metric evidence points to device and link stress (memory, latency, interface down status), though direct CPU utilization data is not provided in the poll."
+        }
+      },
+      "incidentStatus": "OPEN",
+      "createdById": 21,
+      "createdAt": "2026-09-22T03:04:57.182Z"
+    },
+    {
+      "id": 2,
+      "orgId": 12,
+      "incidentId": "18505aae-c565-4eb4-aa87-e3b91af5d5a5",
+      "model": "gemini-3.6-flash",
+      "result": {
+        "impact": {
+          "level": "critical",
+          "description": "BGP routing and connected network services on device BGP-INTEGRA-CCR2116 are offline, causing severe routing disruption."
+        },
+        "reason": "The router likely suffered a system crash or kernel panic triggered by memory exhaustion (memory_pct reached 94.1%), or lost power/physical connectivity.",
+        "actions": [
+          {
+            "step": "Attempt out-of-band or serial console connection to BGP-INTEGRA-CCR2116 to verify CPU, memory, and kernel status.",
+            "priority": "now"
+          },
+          {
+            "step": "Dispatch on-site personnel to inspect device power status, physical cabling, and execute a manual power cycle if unresponsive.",
+            "priority": "now"
+          },
+          {
+            "step": "Verify operational status of adjacent switch and router interfaces connected to BGP-INTEGRA-CCR2116.",
+            "priority": "soon"
+          },
+          {
+            "step": "Analyze system crash dumps and process-level memory consumption post-recovery to mitigate memory leaks.",
+            "priority": "later"
+          }
+        ],
+        "summary": "Device BGP-INTEGRA-CCR2116 has been unreachable via ICMP since 2026-09-21T05:01:06.580Z after experiencing sustained high memory utilization.",
+        "evidence": [
+          {
+            "signal": "reachability",
+            "observation": "Device failed 5 of 5 ICMP echo probes starting at 2026-09-21T05:01:06.580Z."
+          },
+          {
+            "signal": "memory_pct",
+            "observation": "Memory usage triggered a warning at 94.1% against a 90% threshold on 2026-09-21T02:29:30.974Z, 2.5 hours prior to unreachability."
+          },
+          {
+            "signal": "if_oper_status",
+            "observation": "An unresolved interface down alert has been open on the device since 2026-09-20T01:06:42.111Z."
+          }
+        ],
+        "confidence": {
+          "score": 85,
+          "rationale": " ICMP probe failure clearly confirms total unreachability, preceded by high memory usage alerts, but out-of-band console logs and power status are missing to definitively confirm a crash."
+        }
+      },
+      "incidentStatus": "ACKNOWLEDGED",
+      "createdById": 21,
+      "createdAt": "2026-09-22T03:05:32.788Z"
+    },
+    {
+      "id": 3,
+      "orgId": 12,
+      "incidentId": "95137ef5-96e5-4d99-a1a2-5f30ad528cb3",
+      "model": "gemini-3.6-flash",
+      "result": {
+        "impact": {
+          "level": "high",
+          "description": "High risk of router crash or BGP peering flappings, which could degrade or drop transit traffic across connected networks."
+        },
+        "reason": "Memory exhaustion on the CCR2116 BGP router, likely caused by large BGP routing tables or process memory growth, which is contributing to recurring instability and packet loss on the device.",
+        "actions": [
+          {
+            "step": "Log into device BGP-INTEGRA-CCR2116 to check process memory usage and BGP routing table size.",
+            "priority": "now"
+          },
+          {
+            "step": "Verify router reachability and check hardware status for physical link or board issues.",
+            "priority": "now"
+          },
+          {
+            "step": "Restart or prune unstable BGP sessions if memory allocation is exhausted by routing peers.",
+            "priority": "soon"
+          },
+          {
+            "step": "Adjust monitoring notification rate limits to resolve the Telegram alert delivery retry error.",
+            "priority": "later"
+          }
+        ],
+        "summary": "Router BGP-INTEGRA-CCR2116 is experiencing high memory usage at 94.1%, accompanied by ongoing reachability and interface down alerts.",
+        "evidence": [
+          {
+            "signal": "Memory Usage",
+            "observation": "memory_pct reading is 94.1% against a threshold of 90% on device BGP-INTEGRA-CCR2116."
+          },
+          {
+            "signal": "Recent Memory Incidents",
+            "observation": "High memory alert was previously acknowledged on 2026-09-20 with a reading of 95.5%."
+          },
+          {
+            "signal": "Device Reachability & Interfaces",
+            "observation": "An active Device Unreachable critical incident (5 of 5 ICMP probes lost) and an Interface Down warning remain open/acknowledged."
+          }
+        ],
+        "confidence": {
+          "score": 85,
+          "rationale": "Clear metric reading of 94.1% memory usage exceeding the 90% threshold, backed by incident history showing repeated high memory and reachability alerts, though specific per-process memory details are missing."
+        }
+      },
+      "incidentStatus": "OPEN",
+      "createdById": 21,
+      "createdAt": "2026-09-22T05:25:15.856Z"
+    }
+  ]
+}
