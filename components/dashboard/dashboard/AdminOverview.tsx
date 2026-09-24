@@ -115,6 +115,9 @@ export default async function AdminOverview() {
             <Link href="/dashboard/admin/engine" className="text-muted-foreground hover:text-foreground block transition-colors">
               Engine details →
             </Link>
+            <Link href="/dashboard/admin/simulate" className="text-muted-foreground hover:text-foreground block transition-colors">
+              Simulate historical data →
+            </Link>
           </CardContent>
         </Card>
       </div>

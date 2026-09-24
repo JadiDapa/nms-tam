@@ -13,9 +13,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NMS TAM",
+  title: "Netpulse",
   description:
-    "Network monitoring for your devices",
+    "Netpulse keeps a live pulse on your network — monitor devices, catch outages, and manage alerts from one dashboard.",
 };
 
 export default function RootLayout({
@@ -29,9 +29,6 @@ export default function RootLayout({
       suppressHydrationWarning
       lang="en"
     >
-      <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-      </head>
       <body>
         <Providers>
           <Toaster richColors position="top-right" />

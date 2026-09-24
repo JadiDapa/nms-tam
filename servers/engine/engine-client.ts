@@ -14,6 +14,8 @@ import type {
   EngineTestResult,
   MetricBucket,
   InterfaceBucket,
+  SimulateRequestBody,
+  SimulateResult,
 } from "./engine-types";
 
 export class EngineError extends Error {
@@ -147,4 +149,7 @@ export const engine = {
         }),
   getIncident: (id: string) => request<EngineIncidentDetail>("GET", `/incidents/${id}`),
   acknowledgeIncident: (id: string, by: string) => request<EngineIncident>("POST", `/incidents/${id}/acknowledge`, { body: { by } }),
+
+  // admin
+  simulate: (body: SimulateRequestBody) => request<SimulateResult>("POST", "/admin/simulate", { body, timeoutMs: 120_000 }),
 };

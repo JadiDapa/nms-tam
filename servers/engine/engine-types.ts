@@ -218,3 +218,18 @@ export type DeliverySummary = {
 };
 
 export type EngineIncidentDetail = { incident: EngineIncident; notifications: unknown[]; deliverySummary: DeliverySummary[] };
+
+export type SimulateRequestBody = {
+  deviceIds: "all" | string[];
+  startAt: string;
+  durationValue: number;
+  durationUnit: "seconds" | "minutes" | "hours";
+  targetAlertCount: number;
+};
+
+export type SimulateResult = {
+  devicesProcessed: number;
+  samplesWritten: number;
+  incidentsCreated: number;
+  timeRange: { from: string; to: string };
+};
