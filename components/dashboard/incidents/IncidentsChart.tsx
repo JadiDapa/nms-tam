@@ -1,6 +1,5 @@
 "use client";
 
-import { format } from "date-fns";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
@@ -13,8 +12,8 @@ const config = {
   info: { label: "Info", color: SEVERITY_STYLE.info.color },
 } satisfies ChartConfig;
 
-// New incidents per day, stacked by severity.
-export default function IncidentsChart({ days, className }: { days: DayBucket[]; className?: string }) {
+// New incidents over the selected range, stacked by severity.
+export default function IncidentsChart({ days, rangeLabel, className }: { days: DayBucket[]; rangeLabel: string; className?: string }) {
   const totals = {
     critical: days.reduce((s, d) => s + d.critical, 0),
     warning: days.reduce((s, d) => s + d.warning, 0),
@@ -26,7 +25,7 @@ export default function IncidentsChart({ days, className }: { days: DayBucket[];
     <Card className={className}>
       <CardHeader>
         <CardTitle className="text-xl">Activity</CardTitle>
-        <CardDescription>New incidents per day over the last {days.length} days</CardDescription>
+        <CardDescription>New incidents — {rangeLabel}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col">
         <div className="bg-muted flex flex-1 flex-col gap-3 rounded-2xl p-4">
@@ -58,10 +57,7 @@ export default function IncidentsChart({ days, className }: { days: DayBucket[];
                   content={
                     <ChartTooltipContent
                       indicator="dot"
-                      labelFormatter={(_, payload) => {
-                        const key = (payload?.[0]?.payload as DayBucket | undefined)?.key;
-                        return key ? format(new Date(`${key}T12:00:00`), "EEEE, dd MMM") : "";
-                      }}
+                      labelFormatter={(_, payload) => (payload?.[0]?.payload as DayBucket | undefined)?.label ?? ""}
                     />
                   }
                 />

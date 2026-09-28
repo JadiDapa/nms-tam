@@ -15,6 +15,7 @@ import {
   Siren,
   Settings,
   Users,
+  Waypoints,
 } from "lucide-react";
 
 export type MenuItem = {
@@ -49,6 +50,7 @@ export const overviewItems: MenuItem[] = [
   { title: "Users", url: "/dashboard/admin/users", icon: Users, roles: ["ADMIN"], placement: "rail" },
   { title: "Engine", url: "/dashboard/admin/engine", icon: Activity, roles: ["ADMIN"], placement: "rail" },
   { title: "Audit Log", url: "/dashboard/admin/audit", icon: ScrollText, roles: ["ADMIN"], placement: "rail" },
+  { title: "Simulate", url: "/dashboard/admin/simulate", icon: Waypoints, roles: ["ADMIN"], placement: "rail" },
 ];
 
 export const settingsItems: MenuItem[] = [

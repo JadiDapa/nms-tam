@@ -21,7 +21,8 @@ type Props = {
   interfaces: EngineInterface[];
   selected?: string;
   canChange: boolean;
-  range: string;
+  rangeQS: string;
+  basePath?: string;
 };
 
 type View = "grid" | "table";
@@ -31,7 +32,7 @@ const bodyCell = "px-3 py-3 first:pl-4 last:pr-4";
 
 const statusTone = (s: string | null) => (s === "up" ? "green" : s === "down" ? "red" : "gray");
 
-export default function InterfaceTable({ deviceId, interfaces, selected, canChange, range }: Props) {
+export default function InterfaceTable({ deviceId, interfaces, selected, canChange, rangeQS, basePath = "/dashboard/devices" }: Props) {
   const [, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState("all");
@@ -140,7 +141,7 @@ export default function InterfaceTable({ deviceId, interfaces, selected, canChan
         ) : view === "grid" ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {shown.map((i) => (
-              <PortCard key={i.id} deviceId={deviceId} i={i} selected={selected === i.id} canChange={canChange} range={range} onToggle={toggle} />
+              <PortCard key={i.id} deviceId={deviceId} i={i} selected={selected === i.id} canChange={canChange} rangeQS={rangeQS} onToggle={toggle} basePath={basePath} />
             ))}
           </div>
         ) : (
@@ -160,7 +161,7 @@ export default function InterfaceTable({ deviceId, interfaces, selected, canChan
                 <TableRow key={i.id} className={cn("border-border/60", !i.active && "opacity-60", selected === i.id && "bg-muted")}>
                   <TableCell className={bodyCell}>
                     <Link
-                      href={`/dashboard/devices/${deviceId}?tab=interfaces&iface=${i.id}&range=${range}`}
+                      href={`${basePath}/${deviceId}?tab=interfaces&iface=${i.id}&${rangeQS}`}
                       className="block max-w-52 truncate text-sm font-medium hover:underline"
                     >
                       {i.name}
@@ -217,15 +218,17 @@ function PortCard({
   i,
   selected,
   canChange,
-  range,
+  rangeQS,
   onToggle,
+  basePath,
 }: {
   deviceId: number;
   i: EngineInterface;
   selected: boolean;
   canChange: boolean;
-  range: string;
+  rangeQS: string;
   onToggle: (id: string, monitored: boolean) => void;
+  basePath: string;
 }) {
   return (
     <div
@@ -235,7 +238,7 @@ function PortCard({
         !i.active && "opacity-60",
       )}
     >
-      <Link href={`/dashboard/devices/${deviceId}?tab=interfaces&iface=${i.id}&range=${range}`} className="group flex items-start justify-between gap-2">
+      <Link href={`${basePath}/${deviceId}?tab=interfaces&iface=${i.id}&${rangeQS}`} className="group flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium group-hover:underline">{i.name}</p>
           <p className="text-muted-foreground truncate text-[11px]">

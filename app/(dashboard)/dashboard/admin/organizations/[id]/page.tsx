@@ -1,22 +1,21 @@
-import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
-import { formatDate, formatIDR } from "@/lib/format";
-import { monthlyCost } from "@/servers/billing/pricing";
-import PageHeader from "@/components/dashboard/PageHeader";
-import QuotaBar from "@/components/dashboard/QuotaBar";
-import RecordPaymentDialog from "@/components/dashboard/admin/RecordPaymentDialog";
-import SubscriptionControls from "@/components/dashboard/admin/SubscriptionControls";
-import PaymentList from "@/components/dashboard/billing/PaymentList";
-import CreateUserDialog from "@/components/dashboard/users/CreateUserDialog";
-import UserTable from "@/components/dashboard/users/UserTable";
-import { StatusBadge, SubscriptionBadge } from "@/components/dashboard/StatusBadge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { OrganizationService } from "@/servers/services/organization.service";
-import { PaymentService } from "@/servers/services/payment.service";
-import { PlanService } from "@/servers/services/plan.service";
+import { timeAgo } from "@/lib/format";
+import AutoRefresh from "@/components/dashboard/AutoRefresh";
+import ChartCardSkeleton from "@/components/dashboard/dashboard/ChartCardSkeleton";
+import ClientStatGroup from "@/components/dashboard/dashboard/ClientStatGroup";
+import LatencyPanel from "@/components/dashboard/dashboard/LatencyPanel";
+import TrafficPanel from "@/components/dashboard/dashboard/TrafficPanel";
+import AlertsPanel from "@/components/dashboard/dashboard/AlertsPanel";
+import DeviceMapCard from "@/components/dashboard/map/DeviceMapCard";
+import { mapStateOf, type MapPoint } from "@/components/dashboard/map/map-types";
+import { StatusBadge } from "@/components/dashboard/StatusBadge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DeviceMonitorService } from "@/servers/services/device-monitor.service";
+import { IncidentService } from "@/servers/services/incident.service";
 import { SubscriptionService } from "@/servers/services/subscription.service";
-import { UserService } from "@/servers/services/user.service";
 import { BillingRequestService } from "@/servers/services/billing-request.service";
 import { AuditService } from "@/servers/services/audit.service";
 
@@ -24,148 +23,96 @@ type Props = {
   params: Promise<{ id: string }>;
 };
 
-export default async function OrganizationPage({ params }: Props) {
-  const admin = await requireAdmin();
+// The client's health at a glance: the same tiles and charts as their own dashboard, plus quick admin nudges
+// (open requests, latest activity) that link out to the dedicated tabs instead of dumping everything here.
+export default async function OrganizationOverviewPage({ params }: Props) {
+  await requireAdmin();
   const id = Number((await params).id);
-  if (!Number.isInteger(id)) notFound();
 
-  const org = await OrganizationService.getById(id);
-  if (!org) notFound();
-
-  const [ent, usage, plans, payments, users, requests, audit] = await Promise.all([
+  const [ent, { rows, engineOk }, incidents, openRequests, audit] = await Promise.all([
     SubscriptionService.getEntitlements(id),
-    SubscriptionService.usage(id),
-    PlanService.list(),
-    PaymentService.list({ orgId: id }),
-    UserService.list({ orgId: id }),
+    DeviceMonitorService.fleet(id),
+    IncidentService.list(id, { status: "ACTIVE" }).catch(() => ({ items: [], total: 0 })),
     BillingRequestService.list({ orgId: id, status: "OPEN" }),
-    AuditService.list({ orgId: id, take: 15 }),
+    AuditService.list({ orgId: id, take: 5 }),
   ]);
-  const sub = org.subscription;
-  const activePlans = plans.filter((p) => p.isActive || p.id === sub?.planId);
+
+  const mapPoints: MapPoint[] = rows.flatMap(({ device, fleet }) =>
+    device.latitude != null && device.longitude != null
+      ? [
+          {
+            id: device.id,
+            name: device.name,
+            host: fleet?.host ?? "",
+            lat: device.latitude,
+            lng: device.longitude,
+            state: mapStateOf(device.status, fleet?.reachability),
+            latencyMs: fleet?.latencyMs ?? null,
+            lastPollAt: fleet?.lastPollAt ?? null,
+          },
+        ]
+      : [],
+  );
 
   return (
-    <main className="w-full space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-2">
-          <PageHeader title={org.name} subtitle={org.note ?? `Client since ${formatDate(org.createdAt)}`} />
-          <div className="flex items-center gap-2">
-            <SubscriptionBadge status={ent.status} />
-            {org.status === "SUSPENDED" && <StatusBadge label="SUSPENDED" tone="red" />}
-          </div>
-        </div>
-        <RecordPaymentDialog
-          orgId={id}
-          plans={activePlans.map((p) => ({ id: p.id, name: p.name, priceMonthly: p.priceMonthly, extraSlotPrice: p.extraSlotPrice }))}
-          subscription={
-            sub
-              ? {
-                  planId: sub.planId,
-                  status: sub.status,
-                  live: ent.live,
-                  extraSlots: sub.extraSlots,
-                  currentPeriodEnd: sub.currentPeriodEnd.toISOString(),
-                  plan: { id: sub.plan.id, name: sub.plan.name, priceMonthly: sub.plan.priceMonthly, extraSlotPrice: sub.plan.extraSlotPrice },
-                }
-              : null
-          }
-          trigger={<Button>Record payment</Button>}
-        />
-      </div>
+    <div className="space-y-6">
+      <AutoRefresh seconds={15} />
 
-      <Card className="border-border/60">
-        <CardContent className="space-y-4 p-5">
-          {sub ? (
-            <>
-              <div className="grid gap-4 text-sm sm:grid-cols-4">
-                <div>
-                  <p className="text-muted-foreground text-xs">Plan</p>
-                  <p className="font-medium">{sub.plan.name}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Paid until</p>
-                  <p className="font-medium">{formatDate(sub.currentPeriodEnd)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Monthly cost</p>
-                  <p className="font-medium">{formatIDR(monthlyCost(sub.plan, sub.extraSlots))}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Fastest polling</p>
-                  <p className="font-medium">{sub.plan.minPollIntervalSec} s</p>
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <QuotaBar label={`Device slots (${sub.plan.maxDevices} + ${sub.extraSlots} extra)`} used={usage.devices} limit={ent.deviceLimit} />
-                <QuotaBar label="Users" used={usage.users} limit={ent.userLimit} />
-              </div>
-            </>
-          ) : (
-            <p className="text-muted-foreground text-sm">No subscription yet. Record the first payment to activate a plan.</p>
-          )}
-          <SubscriptionControls
-            orgId={id}
-            orgStatus={org.status}
-            hasSubscription={sub !== null}
-            planId={sub?.planId ?? null}
-            extraSlots={sub?.extraSlots ?? 0}
-            plans={activePlans.map((p) => ({ id: p.id, name: p.name, priceMonthly: p.priceMonthly, maxDevices: p.maxDevices }))}
-          />
-        </CardContent>
-      </Card>
-
-      {requests.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold">Open requests</h2>
-          {requests.map((r) => (
-            <div key={r.id} className="bg-card flex items-center justify-between rounded-lg border px-4 py-3 text-sm">
-              <span>
-                {r.kind === "EXTRA_SLOTS" ? `${r.slots} extra slots` : r.kind === "PLAN_CHANGE" ? "Plan change" : "Renewal"} by {r.requestedBy.name ?? r.requestedBy.email}
-                {r.message && <span className="text-muted-foreground"> · “{r.message}”</span>}
-              </span>
-              <span className="text-muted-foreground text-xs">{formatDate(r.createdAt)}</span>
-            </div>
-          ))}
-          <p className="text-muted-foreground text-xs">Mark them done under Requests after you recorded the payment.</p>
-        </div>
+      {openRequests.length > 0 && (
+        <Link
+          href={`/dashboard/admin/organizations/${id}/billing`}
+          className="flex items-center justify-between rounded-lg bg-yellow-500/10 px-4 py-3 text-sm text-yellow-700 transition-colors hover:bg-yellow-500/15 dark:text-yellow-500"
+        >
+          <span>
+            {openRequests.length} open billing request{openRequests.length === 1 ? "" : "s"} waiting on you
+          </span>
+          <ArrowRight className="size-4" />
+        </Link>
       )}
 
-      <div className="space-y-3">
-        <h2 className="text-lg font-semibold">Payments</h2>
-        <PaymentList
-          payments={payments.map((p) => ({
-            id: p.id, receiptNumber: p.receiptNumber, kind: p.kind, amount: p.amount, method: p.method,
-            paidAt: p.paidAt, reference: p.reference, coversUntil: p.coversUntil, voidedAt: p.voidedAt,
-          }))}
-        />
+      {!engineOk && (
+        <p className="bg-destructive/10 text-destructive rounded-lg px-4 py-2 text-sm">
+          Live status is temporarily unavailable. The numbers below may be incomplete.
+        </p>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-5">
+        <ClientStatGroup rows={rows} deviceLimit={ent.deviceLimit} activeIncidents={incidents.total} className="lg:col-span-2" />
+        <Suspense fallback={<ChartCardSkeleton className="lg:col-span-3" />}>
+          <LatencyPanel orgId={id} className="lg:col-span-3" />
+        </Suspense>
       </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Users</h2>
-          <CreateUserDialog organizations={[{ id, name: org.name }]} fixedOrgId={id} />
-        </div>
-        <UserTable
-          selfId={admin.id}
-          users={users.map((u) => ({
-            id: u.id, name: u.name, email: u.email, role: u.role, orgId: u.orgId, orgName: u.org?.name ?? null,
-            joined: u.clerkId !== null, active: u.active, createdAt: u.createdAt.toISOString(),
-          }))}
-        />
+      <div className="grid gap-4 lg:grid-cols-5">
+        <Suspense fallback={<ChartCardSkeleton className="lg:col-span-3" />}>
+          <TrafficPanel orgId={id} className="lg:col-span-3" />
+        </Suspense>
+        <Suspense fallback={<ChartCardSkeleton className="lg:col-span-2" />}>
+          <AlertsPanel orgId={id} className="lg:col-span-2" />
+        </Suspense>
       </div>
 
-      <div className="space-y-3">
-        <h2 className="text-lg font-semibold">Recent activity</h2>
-        <ul className="bg-card divide-y rounded-lg border text-sm">
-          {audit.map((a) => (
-            <li key={a.id} className="flex justify-between gap-4 px-4 py-2">
-              <span>{a.action}</span>
-              <span className="text-muted-foreground text-xs">{formatDate(a.createdAt)}</span>
-            </li>
-          ))}
-          {audit.length === 0 && <li className="text-muted-foreground px-4 py-6 text-center">Nothing yet.</li>}
-        </ul>
-      </div>
-    </main>
+      <DeviceMapCard points={mapPoints} unlocated={rows.length - mapPoints.length} />
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">Recent activity</CardTitle>
+          <Link href={`/dashboard/admin/organizations/${id}/activity`} className="text-muted-foreground hover:text-foreground text-xs">
+            View all →
+          </Link>
+        </CardHeader>
+        <CardContent className="p-0">
+          <ul className="divide-y text-sm">
+            {audit.map((a) => (
+              <li key={a.id} className="flex items-center justify-between gap-4 px-5 py-2.5">
+                <StatusBadge label={a.action} tone="blue" />
+                <span className="text-muted-foreground text-xs whitespace-nowrap">{timeAgo(a.createdAt)}</span>
+              </li>
+            ))}
+            {audit.length === 0 && <li className="text-muted-foreground px-5 py-8 text-center">Nothing yet.</li>}
+          </ul>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

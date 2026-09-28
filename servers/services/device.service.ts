@@ -5,7 +5,7 @@ import { AppError } from "@/lib/errors";
 // The ownership mirror of engine devices. A row here = one slot of the client's quota.
 export const DeviceService = {
   async listByOrg(orgId: number) {
-    return await prisma.device.findMany({ where: { orgId }, orderBy: { name: "asc" } });
+    return await prisma.device.findMany({ where: { orgId }, orderBy: { name: "asc" }, include: { group: true } });
   },
 
   async getOwned(orgId: number, id: number) {
@@ -23,7 +23,7 @@ export const DeviceService = {
   },
 
   // Takes a slot. The client's row is locked while counting, so two simultaneous adds cannot both take the last slot.
-  async reserve(input: { orgId: number; name: string; createdById: number; limit: number }) {
+  async reserve(input: { orgId: number; name: string; createdById: number; limit: number; groupId?: number | null }) {
     return await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${input.orgId} FOR UPDATE`;
       const used = await tx.device.count({ where: { orgId: input.orgId } });
@@ -33,7 +33,7 @@ export const DeviceService = {
         );
       }
       return await tx.device.create({
-        data: { orgId: input.orgId, name: input.name, createdById: input.createdById, status: "PENDING" },
+        data: { orgId: input.orgId, name: input.name, createdById: input.createdById, status: "PENDING", groupId: input.groupId ?? null },
       });
     });
   },
@@ -55,6 +55,10 @@ export const DeviceService = {
 
   async setName(id: number, name: string) {
     return await prisma.device.update({ where: { id }, data: { name } });
+  },
+
+  async setGroup(id: number, groupId: number | null) {
+    return await prisma.device.update({ where: { id }, data: { groupId } });
   },
 
   async setStatus(id: number, status: DeviceStatus, disabledBy: DisabledBy | null) {

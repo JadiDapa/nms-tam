@@ -1,11 +1,14 @@
+import { format } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { addMonths, monthlyCost } from "@/servers/billing/pricing";
-import { paymentsByMonth } from "@/servers/billing/payment-stats";
+import { paymentsByRange } from "@/servers/billing/payment-stats";
+import { resolveDateRange } from "@/lib/date-range";
 import { BillingRequestService } from "@/servers/services/billing-request.service";
 import { PaymentService } from "@/servers/services/payment.service";
 import { PlanService } from "@/servers/services/plan.service";
 import { SubscriptionService } from "@/servers/services/subscription.service";
+import DateRangePicker from "../DateRangePicker";
 import PageHeader from "../PageHeader";
 import BillingRequestDialog from "./BillingRequestDialog";
 import BillingStats from "./BillingStats";
@@ -15,7 +18,9 @@ import PlanCard from "./PlanCard";
 import RequestsCard from "./RequestsCard";
 
 // The client's billing page: plan and usage on top, payments and requests in the middle, the full history below.
-export default async function BillingOverview({ orgId }: { orgId: number }) {
+export default async function BillingOverview({ orgId, query }: { orgId: number; query: { range?: string; from?: string; to?: string } }) {
+  // Payments are sparse day-to-day, so default to "this month" rather than "today" (only for the chart's own picker).
+  const range = resolveDateRange({ range: "month", ...query });
   const [ent, usage, sub, plans, payments, requests] = await Promise.all([
     SubscriptionService.getEntitlements(orgId),
     SubscriptionService.usage(orgId),
@@ -105,8 +110,15 @@ export default async function BillingOverview({ orgId }: { orgId: number }) {
         </Card>
       )}
 
+      <div className="flex justify-end">
+        <DateRangePicker basePath="/dashboard/billing" current={range} />
+      </div>
       <div className="grid gap-4 lg:grid-cols-5">
-        <PaymentsChart className="lg:col-span-3" months={paymentsByMonth(payments, 6, now)} />
+        <PaymentsChart
+          className="lg:col-span-3"
+          months={paymentsByRange(payments, range)}
+          rangeLabel={range.preset === "custom" ? `${format(range.from, "d MMM yyyy")} – ${format(range.to, "d MMM yyyy")}` : range.label.toLowerCase()}
+        />
         <RequestsCard className="lg:col-span-2" requests={requests} />
       </div>
 

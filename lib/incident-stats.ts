@@ -1,20 +1,33 @@
-import { format, startOfDay, subDays } from "date-fns";
+import { addHours, addDays, addMonths, format, startOfDay, startOfHour, startOfMonth } from "date-fns";
+import type { ResolvedRange } from "./date-range";
 
 export type IncidentLite = { severity: string; status: string; triggeredAt: string; resolvedAt: string | null };
 
 export type DayBucket = { key: string; label: string; critical: number; warning: number; info: number; total: number };
 
-// How many incidents started on each of the last `days` days (oldest first, today last), split by severity.
-// Days without incidents stay in the list with zeros so the chart has no gaps.
-export function incidentsByDay(incidents: IncidentLite[], days: number, now: Date): DayBucket[] {
+const DAY = 86_400_000;
+
+// New incidents within the selected range, split by severity. Bucket width adapts to how wide the range is
+// (hourly within a day, daily within ~2 months, monthly beyond that) so a "today" and a year-long custom range
+// both render as a readable number of bars. Empty buckets stay in the list with zeros so the chart has no gaps.
+export function incidentsByRange(incidents: IncidentLite[], range: ResolvedRange): DayBucket[] {
+  const spanMs = range.to.getTime() - range.from.getTime();
+  const unit = spanMs <= DAY ? "hour" : spanMs <= 62 * DAY ? "day" : "month";
+
+  const start = unit === "hour" ? startOfHour(range.from) : unit === "day" ? startOfDay(range.from) : startOfMonth(range.from);
+  const step = unit === "hour" ? (d: Date) => addHours(d, 1) : unit === "day" ? (d: Date) => addDays(d, 1) : (d: Date) => addMonths(d, 1);
+  const keyFmt = unit === "hour" ? "yyyy-MM-dd'T'HH" : unit === "day" ? "yyyy-MM-dd" : "yyyy-MM";
+  const labelFmt = unit === "hour" ? "HH:mm" : unit === "day" ? "dd MMM" : "MMM yyyy";
+
   const buckets: DayBucket[] = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const d = subDays(startOfDay(now), i);
-    buckets.push({ key: format(d, "yyyy-MM-dd"), label: format(d, "dd MMM"), critical: 0, warning: 0, info: 0, total: 0 });
+  for (let d = start; d.getTime() <= range.to.getTime(); d = step(d)) {
+    buckets.push({ key: format(d, keyFmt), label: format(d, labelFmt), critical: 0, warning: 0, info: 0, total: 0 });
   }
   const byKey = new Map(buckets.map((b) => [b.key, b]));
   for (const inc of incidents) {
-    const b = byKey.get(format(new Date(inc.triggeredAt), "yyyy-MM-dd"));
+    const t = new Date(inc.triggeredAt);
+    if (t < range.from || t > range.to) continue;
+    const b = byKey.get(format(t, keyFmt));
     if (!b) continue;
     if (inc.severity === "critical" || inc.severity === "warning" || inc.severity === "info") {
       b[inc.severity] += 1;

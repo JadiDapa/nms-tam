@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import { requireClient } from "@/lib/auth";
 import DeviceDetail from "@/components/dashboard/devices/DeviceDetail";
-import { parseRange } from "@/servers/validators/monitoring.validator";
+import { resolveDateRange } from "@/lib/date-range";
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; range?: string; iface?: string }>;
+  searchParams: Promise<{ tab?: string; range?: string; from?: string; to?: string; iface?: string }>;
 };
 
 export default async function DevicePage({ params, searchParams }: Props) {
@@ -15,5 +15,5 @@ export default async function DevicePage({ params, searchParams }: Props) {
   const id = Number(rawId);
   if (!Number.isInteger(id)) notFound();
 
-  return <DeviceDetail orgId={orgId} id={id} tab={sp.tab} range={parseRange(sp.range)} iface={sp.iface} />;
+  return <DeviceDetail orgId={orgId} id={id} tab={sp.tab} range={resolveDateRange(sp)} iface={sp.iface} />;
 }

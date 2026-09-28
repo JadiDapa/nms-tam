@@ -26,9 +26,24 @@ describe("device schemas", () => {
     expect(r.success).toBe(false);
   });
 
-  it("SNMP needs a credential", () => {
+  it("SNMP needs a login typed in on the device", () => {
     expect(CreateDeviceSchema.safeParse({ ...base, snmpEnabled: true }).success).toBe(false);
-    expect(CreateDeviceSchema.safeParse({ ...base, snmpEnabled: true, snmpCredentialId: 3 }).success).toBe(true);
+    expect(CreateDeviceSchema.safeParse({ ...base, snmpEnabled: true, snmpAuth: { version: "v2c" } }).success).toBe(false);
+    expect(CreateDeviceSchema.safeParse({ ...base, snmpEnabled: true, snmpAuth: { version: "v2c", community: "public" } }).success).toBe(true);
+  });
+
+  it("a half-filled SNMP login is ignored while SNMP is off", () => {
+    expect(CreateDeviceSchema.safeParse({ ...base, snmpEnabled: false, snmpAuth: { version: "v2c", community: "" } }).success).toBe(true);
+  });
+
+  it("SNMPv3 protocols come with their keys", () => {
+    const v3 = { version: "v3" as const, username: "u" };
+    const ok = (snmpAuth: object) => CreateDeviceSchema.safeParse({ ...base, snmpEnabled: true, snmpAuth }).success;
+    expect(ok({ ...v3, authProtocol: "SHA" })).toBe(false);
+    expect(ok({ ...v3, authProtocol: "SHA", authKey: "short" })).toBe(false);
+    expect(ok({ ...v3, authProtocol: "SHA", authKey: "longenough" })).toBe(true);
+    expect(ok({ ...v3, privProtocol: "AES", privKey: "longenough" })).toBe(false); // privacy needs authentication
+    expect(ok(v3)).toBe(true); // noAuthNoPriv
   });
 
   it.each(["http://1.2.3.4", "1.2.3.4/path", "host name", "a@b", ""])("rejects a host like %j", (host) => {
@@ -66,15 +81,12 @@ describe("device schemas", () => {
 
 describe("credential schema", () => {
   it("each type asks for its own secret", () => {
-    expect(CredentialSchema.safeParse({ label: "a", type: "snmp_v2c" }).success).toBe(false);
-    expect(CredentialSchema.safeParse({ label: "a", type: "snmp_v2c", community: "public" }).success).toBe(true);
     expect(CredentialSchema.safeParse({ label: "a", type: "telegram_bot" }).success).toBe(false);
     expect(CredentialSchema.safeParse({ label: "a", type: "webhook_secret", secret: "12345678" }).success).toBe(true);
   });
 
-  it("SNMPv3 protocols come with their keys", () => {
-    expect(CredentialSchema.safeParse({ label: "a", type: "snmp_v3", username: "u", authProtocol: "SHA" }).success).toBe(false);
-    expect(CredentialSchema.safeParse({ label: "a", type: "snmp_v3", username: "u", authProtocol: "SHA", authKey: "longenough" }).success).toBe(true);
+  it("SNMP is no longer a credential type", () => {
+    expect(CredentialSchema.safeParse({ label: "a", type: "snmp_v2c", community: "public" }).success).toBe(false);
   });
 });
 

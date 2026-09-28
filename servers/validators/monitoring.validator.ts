@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 export const DEVICE_TYPES = ["router", "switch", "firewall", "server", "access_point", "gateway", "unknown"] as const;
-export const CREDENTIAL_TYPES = ["snmp_v1", "snmp_v2c", "snmp_v3", "telegram_bot", "webhook_secret"] as const;
+export const CREDENTIAL_TYPES = ["telegram_bot", "webhook_secret"] as const;
+export const SNMP_VERSIONS = ["v1", "v2c", "v3"] as const;
 export const AUTH_PROTOCOLS = ["MD5", "SHA", "SHA224", "SHA256", "SHA384", "SHA512"] as const;
 export const PRIV_PROTOCOLS = ["DES", "AES", "AES256B", "AES256R"] as const;
 export const CONDITION_TYPES = ["metric_threshold", "device_down", "snmp_unavailable", "interface_down"] as const;
@@ -38,6 +39,36 @@ const PollingSchema = z
   })
   .partial();
 
+// SNMP login typed in on the device itself (stored by the engine as-is, not encrypted). Flat so a form can bind to it;
+// fields that do not belong to the chosen version are dropped before it goes to the engine.
+const SnmpAuthShape = z.object({
+  version: z.enum(SNMP_VERSIONS),
+  community: z.string().max(255).optional(),
+  username: z.string().max(255).optional(),
+  authProtocol: z.enum(AUTH_PROTOCOLS).optional(),
+  authKey: z.string().max(255).optional(),
+  privProtocol: z.enum(PRIV_PROTOCOLS).optional(),
+  privKey: z.string().max(255).optional(),
+});
+
+export type SnmpAuthInput = z.input<typeof SnmpAuthShape>;
+
+// Applied only while SNMP is switched on, so a half-filled login of a device that has SNMP off never blocks saving.
+const snmpAuthCheck = (v: SnmpAuthInput, ctx: z.RefinementCtx, base: (string | number)[]) => {
+  const blank = (s: string | undefined) => !s || s.trim() === "";
+  const issue = (field: string, message: string) => ctx.addIssue({ code: "custom", path: [...base, field], message });
+  if (v.version !== "v3") {
+    if (blank(v.community)) issue("community", "Community string is required");
+    return;
+  }
+  if (blank(v.username)) issue("username", "Username is required");
+  if (Boolean(v.authProtocol) !== !blank(v.authKey)) issue("authKey", "Auth protocol and key go together");
+  if (Boolean(v.privProtocol) !== !blank(v.privKey)) issue("privKey", "Privacy protocol and key go together");
+  if (!blank(v.privKey) && blank(v.authKey)) issue("privKey", "Privacy needs authentication");
+  if (!blank(v.authKey) && v.authKey!.trim().length < 8) issue("authKey", "At least 8 characters");
+  if (!blank(v.privKey) && v.privKey!.trim().length < 8) issue("privKey", "At least 8 characters");
+};
+
 // Fields without defaults: an update that leaves a field out must leave it alone (a default would silently reset it).
 const DeviceFields = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
@@ -50,10 +81,11 @@ const DeviceFields = z.object({
   icmpEnabled: z.boolean(),
   tcpPorts: z.array(port).max(20),
   snmpEnabled: z.boolean(),
-  // id of the client's own credential record, never an engine id
-  snmpCredentialId: z.number().int().positive().nullish(),
+  snmpAuth: SnmpAuthShape.nullish(),
   snmpPort: port,
   polling: PollingSchema,
+  // id of the client's own device group, never an engine id
+  groupId: z.number().int().positive().nullish(),
 });
 
 export const locationCheck = (v: { latitude?: number | null; longitude?: number | null }, ctx: z.RefinementCtx) => {
@@ -64,13 +96,14 @@ export const locationCheck = (v: { latitude?: number | null; longitude?: number 
   }
 };
 
-const checks = (v: { latitude?: number | null; longitude?: number | null; icmpEnabled?: boolean; tcpPorts?: number[]; snmpEnabled?: boolean; snmpCredentialId?: number | null }, ctx: z.RefinementCtx) => {
+const checks = (v: { latitude?: number | null; longitude?: number | null; icmpEnabled?: boolean; tcpPorts?: number[]; snmpEnabled?: boolean; snmpAuth?: unknown }, ctx: z.RefinementCtx) => {
   locationCheck(v, ctx);
   if (!v.icmpEnabled && !v.snmpEnabled && (v.tcpPorts?.length ?? 0) === 0) {
     ctx.addIssue({ code: "custom", path: ["icmpEnabled"], message: "Enable at least one check: ping, TCP ports or SNMP" });
   }
-  if (v.snmpEnabled && !v.snmpCredentialId) {
-    ctx.addIssue({ code: "custom", path: ["snmpCredentialId"], message: "Choose an SNMP credential" });
+  if (v.snmpEnabled) {
+    if (!v.snmpAuth) ctx.addIssue({ code: "custom", path: ["snmpAuth"], message: "Enter the SNMP login" });
+    else snmpAuthCheck(v.snmpAuth as SnmpAuthInput, ctx, ["snmpAuth"]);
   }
 };
 
@@ -84,11 +117,10 @@ export const CreateDeviceSchema = DeviceFields.extend({
   enabled: z.boolean().default(true),
 }).superRefine(checks);
 
+// An update that leaves snmpAuth out keeps the stored one; the engine refuses SNMP that ends up with none.
 export const UpdateDeviceSchema = DeviceFields.partial().superRefine((v, ctx) => {
   locationCheck(v, ctx);
-  if (v.snmpEnabled && !v.snmpCredentialId) {
-    ctx.addIssue({ code: "custom", path: ["snmpCredentialId"], message: "Choose an SNMP credential" });
-  }
+  if (v.snmpEnabled && v.snmpAuth) snmpAuthCheck(v.snmpAuth, ctx, ["snmpAuth"]);
 });
 
 export const TestDeviceSchema = z
@@ -96,25 +128,26 @@ export const TestDeviceSchema = z
     host: hostSchema,
     icmp: z.boolean().default(true),
     tcpPorts: z.array(port).max(20).default([]),
-    snmpCredentialId: z.number().int().positive().nullish(),
+    snmpAuth: SnmpAuthShape.nullish(),
     snmpPort: port.default(161),
   })
   .superRefine((v, ctx) => {
-    if (!v.icmp && v.tcpPorts.length === 0 && !v.snmpCredentialId) {
+    if (!v.icmp && v.tcpPorts.length === 0 && !v.snmpAuth) {
       ctx.addIssue({ code: "custom", path: ["icmp"], message: "Enable at least one check to test" });
     }
+    if (v.snmpAuth) snmpAuthCheck(v.snmpAuth, ctx, ["snmpAuth"]);
   });
+
+export const DeviceGroupSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(80),
+});
+
+export type DeviceGroupInput = z.input<typeof DeviceGroupSchema>;
 
 export const CredentialSchema = z
   .object({
     label: z.string().trim().min(1, "Name is required").max(100),
     type: z.enum(CREDENTIAL_TYPES),
-    community: z.string().max(255).optional(),
-    username: z.string().max(255).optional(),
-    authProtocol: z.enum(AUTH_PROTOCOLS).optional(),
-    authKey: z.string().max(255).optional(),
-    privProtocol: z.enum(PRIV_PROTOCOLS).optional(),
-    privKey: z.string().max(255).optional(),
     botToken: z.string().max(255).optional(),
     secret: z.string().max(255).optional(),
   })
@@ -122,16 +155,6 @@ export const CredentialSchema = z
     const need = (val: string | undefined, path: string, message: string) => {
       if (!val || val.trim() === "") ctx.addIssue({ code: "custom", path: [path], message });
     };
-    if (v.type === "snmp_v1" || v.type === "snmp_v2c") need(v.community, "community", "Community string is required");
-    if (v.type === "snmp_v3") {
-      need(v.username, "username", "Username is required");
-      if (Boolean(v.authProtocol) !== Boolean(v.authKey)) {
-        ctx.addIssue({ code: "custom", path: ["authKey"], message: "Auth protocol and key go together" });
-      }
-      if (Boolean(v.privProtocol) !== Boolean(v.privKey)) {
-        ctx.addIssue({ code: "custom", path: ["privKey"], message: "Privacy protocol and key go together" });
-      }
-    }
     if (v.type === "telegram_bot") need(v.botToken, "botToken", "Bot token is required");
     if (v.type === "webhook_secret") need(v.secret, "secret", "Secret is required");
   });
@@ -196,12 +219,3 @@ export type UpdateDeviceInput = z.input<typeof UpdateDeviceSchema>;
 export type TestDeviceInput = z.input<typeof TestDeviceSchema>;
 export type ChannelInput = z.input<typeof ChannelSchema>;
 export type CredentialInput = z.input<typeof CredentialSchema>;
-
-export const RANGES = {
-  "1h": { ms: 3_600_000, bucketSec: 30, label: "1 hour" },
-  "6h": { ms: 21_600_000, bucketSec: 120, label: "6 hours" },
-  "24h": { ms: 86_400_000, bucketSec: 300, label: "24 hours" },
-  "7d": { ms: 604_800_000, bucketSec: 1800, label: "7 days" },
-} as const;
-export type RangeKey = keyof typeof RANGES;
-export const parseRange = (v: string | undefined): RangeKey => (v && v in RANGES ? (v as RangeKey) : "24h");

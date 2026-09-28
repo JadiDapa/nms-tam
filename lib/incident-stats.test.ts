@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { formatReading, incidentsByDay, meanResolveMs } from "./incident-stats";
+import { startOfDay, subDays } from "date-fns";
+import { formatReading, incidentsByRange, meanResolveMs } from "./incident-stats";
+import type { ResolvedRange } from "./date-range";
 
 const NOW = new Date(2026, 8, 21, 15, 0, 0);
 const inc = (daysAgo: number, severity: string, status = "RESOLVED", mins = 30) => {
   const start = new Date(NOW.getTime() - daysAgo * 86_400_000);
   return { severity, status, triggeredAt: start.toISOString(), resolvedAt: status === "RESOLVED" ? new Date(start.getTime() + mins * 60_000).toISOString() : null };
 };
+// Last 7 days ending today, day-bucketed (span well under the 62-day month-bucket cutoff).
+const week7: ResolvedRange = { preset: "custom", from: subDays(startOfDay(NOW), 6), to: NOW, bucketSec: 1_800, label: "" };
 
-describe("incidentsByDay", () => {
+describe("incidentsByRange", () => {
   it("lists every day of the window, oldest first, with zeros for quiet days", () => {
-    const r = incidentsByDay([], 7, NOW);
+    const r = incidentsByRange([], week7);
     expect(r).toHaveLength(7);
     expect(r[0].key).toBe("2026-09-15");
     expect(r[6].key).toBe("2026-09-21");
@@ -17,14 +21,21 @@ describe("incidentsByDay", () => {
   });
 
   it("counts by severity on the day the incident started", () => {
-    const r = incidentsByDay([inc(0, "critical"), inc(0, "warning"), inc(0, "warning"), inc(2, "info")], 7, NOW);
+    const r = incidentsByRange([inc(0, "critical"), inc(0, "warning"), inc(0, "warning"), inc(2, "info")], week7);
     expect(r[6]).toMatchObject({ critical: 1, warning: 2, info: 0, total: 3 });
     expect(r[4]).toMatchObject({ info: 1, total: 1 });
   });
 
   it("ignores incidents older than the window and unknown severities", () => {
-    const r = incidentsByDay([inc(30, "critical"), inc(0, "weird")], 7, NOW);
+    const r = incidentsByRange([inc(30, "critical"), inc(0, "weird")], week7);
     expect(r.reduce((s, b) => s + b.total, 0)).toBe(0);
+  });
+
+  it("buckets by hour within a single day", () => {
+    const today: ResolvedRange = { preset: "today", from: startOfDay(NOW), to: NOW, bucketSec: 30, label: "" };
+    const r = incidentsByRange([inc(0, "critical")], today);
+    expect(r.length).toBeGreaterThan(1);
+    expect(r.reduce((s, b) => s + b.total, 0)).toBe(1);
   });
 });
 

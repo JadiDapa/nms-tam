@@ -23,6 +23,16 @@ export type EnginePolling = {
   icmpCount: number;
 };
 
+export type EngineSnmpAuth = {
+  version: "v1" | "v2c" | "v3";
+  community?: string;
+  username?: string;
+  authProtocol?: "MD5" | "SHA" | "SHA224" | "SHA256" | "SHA384" | "SHA512";
+  authKey?: string;
+  privProtocol?: "DES" | "AES" | "AES256B" | "AES256R";
+  privKey?: string;
+};
+
 export type EngineDevice = {
   id: string;
   name: string;
@@ -35,7 +45,8 @@ export type EngineDevice = {
   icmpEnabled: boolean;
   tcpPorts: number[];
   snmpEnabled: boolean;
-  snmpCredentialId: string | null;
+  // the SNMP login typed in when the device was added (the engine stores it as plain JSON)
+  snmpAuth: EngineSnmpAuth | null;
   snmpPort: number;
   sysName: string | null;
   sysDescr: string | null;
@@ -219,17 +230,56 @@ export type DeliverySummary = {
 
 export type EngineIncidentDetail = { incident: EngineIncident; notifications: unknown[]; deliverySummary: DeliverySummary[] };
 
+export type SimulateWindowBody = {
+  /** 0 = Sunday .. 6 = Saturday (UTC) */
+  weekdays: number[];
+  /** seconds since UTC midnight, inclusive */
+  dailyStartSec: number;
+  /** seconds since UTC midnight, exclusive */
+  dailyEndSec: number;
+  trafficMinBps: number;
+  trafficMaxBps: number;
+};
+
 export type SimulateRequestBody = {
-  deviceIds: "all" | string[];
+  deviceIds: string[];
   startAt: string;
-  durationValue: number;
-  durationUnit: "seconds" | "minutes" | "hours";
-  targetAlertCount: number;
+  endAt: string;
+  /** Checked in order; the first window whose weekday + time-of-day covers a tick wins. */
+  windows: SimulateWindowBody[];
+  /** Applies to any tick no window matches. */
+  defaultTrafficMinBps: number;
+  defaultTrafficMaxBps: number;
 };
 
 export type SimulateResult = {
   devicesProcessed: number;
+  interfacesProcessed: number;
   samplesWritten: number;
-  incidentsCreated: number;
   timeRange: { from: string; to: string };
+};
+
+export type SimulateJobStarted = { jobId: string; totalSamples: number; devicesTotal: number };
+
+export type SimulateDeviceProgress = {
+  deviceId: string;
+  deviceName: string;
+  status: "pending" | "running" | "done";
+  interfacesTotal: number;
+  interfacesDone: number;
+  samplesTotal: number;
+  samplesWritten: number;
+};
+
+export type SimulateJobStatus = {
+  status: "running" | "done" | "error";
+  startedAt: string;
+  totalSamples: number;
+  samplesWritten: number;
+  devicesTotal: number;
+  devicesProcessed: number;
+  interfacesProcessed: number;
+  devices: SimulateDeviceProgress[];
+  result: SimulateResult | null;
+  error: string | null;
 };

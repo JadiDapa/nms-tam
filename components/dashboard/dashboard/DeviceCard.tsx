@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CircleHelp, Network, Router, Server, ShieldCheck, Waypoints, Wifi, type LucideIcon } from "lucide-react";
+import { CircleHelp, FolderOpen, Network, Router, Server, ShieldCheck, Waypoints, Wifi, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBps, formatMs, formatPct, timeAgo } from "@/lib/format";
 import { STATE_META } from "../map/map-types";
@@ -45,13 +45,21 @@ export const TYPE_ICON: Record<string, LucideIcon> = {
 
 const tag = "bg-card text-muted-foreground rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium";
 
-export default function DeviceCard({ device: d }: { device: DeviceItem }) {
+export default function DeviceCard({
+  device: d,
+  showGroup = true,
+  basePath = "/dashboard/devices",
+}: {
+  device: DeviceItem;
+  showGroup?: boolean;
+  basePath?: string;
+}) {
   const paused = d.state === "paused";
   const TypeIcon = TYPE_ICON[d.deviceType] ?? CircleHelp;
 
   return (
     <Link
-      href={`/dashboard/devices/${d.id}`}
+      href={`${basePath}/${d.id}`}
       className={cn(
         "bg-muted group flex flex-col gap-5 rounded-3xl p-5 transition-all hover:-translate-y-0.5 hover:shadow-md",
         paused && "opacity-70",
@@ -65,6 +73,12 @@ export default function DeviceCard({ device: d }: { device: DeviceItem }) {
           <div className="min-w-0">
             <p className="truncate text-base leading-tight font-medium">{d.name}</p>
             <p className="text-muted-foreground mt-1 truncate font-mono text-xs">{d.host || "—"}</p>
+            {showGroup && d.groupName && (
+              <p className="text-muted-foreground mt-1 flex items-center gap-1 truncate text-xs">
+                <FolderOpen className="size-3 shrink-0" />
+                {d.groupName}
+              </p>
+            )}
           </div>
         </div>
         <span className="bg-card text-muted-foreground flex shrink-0 items-center gap-1.5 rounded-[6px] px-2 py-1 text-xs font-medium capitalize">

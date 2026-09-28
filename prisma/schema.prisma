@@ -78,8 +78,23 @@ model Organization {
   payments      Payment[]
   requests      BillingRequest[]
   devices       Device[]
+  deviceGroups  DeviceGroup[]
   resources     EngineResource[]
   analyses      IncidentAnalysis[]
+}
+
+// A user-defined bucket of devices ("Area A", "Core network", ...). App-side only, the engine never sees it.
+model DeviceGroup {
+  id        Int          @id @default(autoincrement())
+  orgId     Int
+  org       Organization @relation(fields: [orgId], references: [id])
+  name      String
+  createdAt DateTime     @default(now())
+
+  devices   Device[]
+
+  @@unique([orgId, name])
+  @@index([orgId])
 }
 
 model User {
@@ -202,8 +217,12 @@ model Device {
   // Where the device stands, for the dashboard map. App-side only: the engine never sees it.
   latitude       Float?
   longitude      Float?
+  // User-defined grouping ("Area A", ...). App-side only: the engine never sees it.
+  groupId        Int?
+  group          DeviceGroup? @relation(fields: [groupId], references: [id])
 
   @@index([orgId])
+  @@index([groupId])
 }
 
 // Ownership mirror of engine credentials / channels / alert rules.

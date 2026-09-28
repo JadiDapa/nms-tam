@@ -10,8 +10,8 @@ import type { MonthTotal } from "@/servers/billing/payment-stats";
 
 const config = { total: { label: "Paid", color: "var(--chart-1)" } } satisfies ChartConfig;
 
-// What the client paid, month by month.
-export default function PaymentsChart({ months, className }: { months: MonthTotal[]; className?: string }) {
+// What the client paid over the selected range.
+export default function PaymentsChart({ months, rangeLabel, className }: { months: MonthTotal[]; rangeLabel: string; className?: string }) {
   const hatchId = `hatch-${useId().replace(/:/g, "")}`;
   const total = months.reduce((s, m) => s + m.total, 0);
   const count = months.reduce((s, m) => s + m.count, 0);
@@ -20,7 +20,7 @@ export default function PaymentsChart({ months, className }: { months: MonthTota
     <Card className={className}>
       <CardHeader>
         <CardTitle className="text-xl">Payments</CardTitle>
-        <CardDescription>Money received from you, per month, over the last {months.length} months</CardDescription>
+        <CardDescription>Money received from you — {rangeLabel}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col">
         <div className="bg-muted flex flex-1 flex-col gap-3 rounded-2xl p-4">

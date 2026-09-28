@@ -5,7 +5,7 @@ import type { EngineIncident } from "../engine/engine-types";
 import { AuditService } from "./audit.service";
 import { DeviceService } from "./device.service";
 
-export type IncidentFilter = { status?: string; severity?: string };
+export type IncidentFilter = { status?: string; severity?: string; limit?: number };
 
 // The engine names a client's rules "o12:High CPU" to keep clients apart; that prefix must never reach a screen.
 // Incident titles are "<rule name>: <device>", so they carry it too.
@@ -19,7 +19,7 @@ export const IncidentService = {
   async list(orgId: number, filter: IncidentFilter = {}) {
     const devices = await DeviceService.listByOrg(orgId);
     const ids = devices.map((d) => d.engineDeviceId).filter((x): x is string => x !== null);
-    const r = await call(orgId, () => engine.listIncidents({ deviceIds: ids, status: filter.status, severity: filter.severity, limit: 200 }));
+    const r = await call(orgId, () => engine.listIncidents({ deviceIds: ids, status: filter.status, severity: filter.severity, limit: filter.limit ?? 200 }));
     const byEngine = new Map(devices.map((d) => [d.engineDeviceId, d]));
     return {
       total: r.total,

@@ -1,5 +1,6 @@
 import { mapStateOf } from "../map/map-types";
 import { DeviceMonitorService, type DeviceExtra } from "@/servers/services/device-monitor.service";
+import { DeviceGroupService } from "@/servers/services/device-group.service";
 import DeviceList from "./DeviceList";
 import { STATE_ORDER, type DeviceItem } from "./device-list-types";
 
@@ -15,18 +16,22 @@ type Rows = Awaited<ReturnType<typeof DeviceMonitorService.fleet>>["rows"];
 type Props = {
   orgId: number;
   rows: Rows;
-  addHref: string;
-  addLabel: string;
+  addHref?: string;
+  addLabel?: string;
   canAdd: boolean;
   initialView?: "grid" | "table";
   title?: string;
   className?: string;
+  basePath?: string;
 };
 
 // The client's devices, worst first. The live health comes from the fleet snapshot the dashboard already loaded;
 // type, checks, traffic and the latency trend load here so the rest of the page never waits for them.
-export default async function DeviceListPanel({ orgId, rows, addHref, addLabel, canAdd, initialView, title, className }: Props) {
-  const extras = await DeviceMonitorService.deviceExtras(orgId).catch((): Record<number, DeviceExtra> => ({}));
+export default async function DeviceListPanel({ orgId, rows, addHref, addLabel, canAdd, initialView, title, className, basePath }: Props) {
+  const [extras, groups] = await Promise.all([
+    DeviceMonitorService.deviceExtras(orgId).catch((): Record<number, DeviceExtra> => ({})),
+    DeviceGroupService.listByOrg(orgId),
+  ]);
 
   const devices: DeviceItem[] = rows
     .map(({ device, fleet }) => {
@@ -41,6 +46,8 @@ export default async function DeviceListPanel({ orgId, rows, addHref, addLabel, 
         snmpHealth: device.status === "ACTIVE" && x?.snmp && fleet?.snmp && fleet.snmp !== "UNKNOWN" ? fleet.snmp : null,
         deviceType: x?.deviceType ?? "unknown",
         vendor: x?.vendor ?? null,
+        groupId: device.groupId,
+        groupName: device.group?.name ?? null,
         icmp: x?.icmp ?? false,
         snmp: x?.snmp ?? false,
         tcpPorts: x?.tcpPorts ?? 0,
@@ -55,5 +62,17 @@ export default async function DeviceListPanel({ orgId, rows, addHref, addLabel, 
     })
     .sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.name.localeCompare(b.name));
 
-  return <DeviceList devices={devices} addHref={addHref} addLabel={addLabel} canAdd={canAdd} initialView={initialView} title={title} className={className} />;
+  return (
+    <DeviceList
+      devices={devices}
+      groups={groups.map((g) => ({ id: g.id, name: g.name }))}
+      addHref={addHref}
+      addLabel={addLabel}
+      canAdd={canAdd}
+      initialView={initialView}
+      title={title}
+      className={className}
+      basePath={basePath}
+    />
+  );
 }

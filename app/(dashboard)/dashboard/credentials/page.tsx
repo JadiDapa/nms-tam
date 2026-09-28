@@ -19,7 +19,7 @@ export default async function CredentialsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <PageHeader
           title="Credentials"
-          subtitle="SNMP logins and bot tokens. They are encrypted and can never be shown again, only replaced."
+          subtitle="Telegram bot tokens and webhook signing secrets used by your alert channels. They are encrypted and can never be shown again, only replaced."
         />
         {ent.live && (
           <CredentialDialog

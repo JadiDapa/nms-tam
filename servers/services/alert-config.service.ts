@@ -21,16 +21,8 @@ async function requireLive(orgId: number) {
   if (!ent.live) throw new AppError(ent.reason ?? "Your subscription is not active.");
 }
 
-const clean = <T extends Record<string, unknown>>(o: T) =>
-  Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== ""));
-
 function buildSecret(d: CredentialDTO): Record<string, unknown> {
   switch (d.type) {
-    case "snmp_v1":
-    case "snmp_v2c":
-      return { community: d.community };
-    case "snmp_v3":
-      return clean({ username: d.username, authProtocol: d.authProtocol, authKey: d.authKey, privProtocol: d.privProtocol, privKey: d.privKey });
     case "telegram_bot":
       return { botToken: d.botToken };
     case "webhook_secret":
@@ -80,7 +72,11 @@ export const AlertConfigService = {
 
   async deleteCredential(actor: { id: number }, orgId: number, id: number) {
     const record = await ResourceService.getOwned(orgId, "CREDENTIAL", id);
-    await call(orgId, () => engine.deleteCredential(record.engineId));
+    // an old SNMP credential is gone from the engine but still listed here: deleting it just clears our record
+    await call(orgId, () => engine.deleteCredential(record.engineId)).catch((err) => {
+      if (err instanceof AppError && err.status === 404) return;
+      throw err;
+    });
     await ResourceService.remove(id);
     await AuditService.log({ actorId: actor.id, orgId, action: "credential.delete", targetType: "Credential", targetId: id });
   },

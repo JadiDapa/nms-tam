@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/errors";
+import { lastNMs } from "@/lib/date-range";
 import { engine } from "@/servers/engine/engine-client";
 import { AlertConfigService } from "@/servers/services/alert-config.service";
 import { DeviceMonitorService } from "@/servers/services/device-monitor.service";
@@ -75,9 +76,7 @@ async function main() {
     await pay({ orgId: orgB.id, kind: "ACTIVATION", planId: small.id, months: 1, amount: 100_000, reference: "TRX-B" });
 
     console.log("\n[quota] slots are enforced, even under concurrency");
-    const cred = SNMP_PORT
-      ? await AlertConfigService.createCredential(userA, orgA.id, { label: `${tag}-snmp`, type: "snmp_v2c", community: SNMP_COMMUNITY })
-      : null;
+    const snmpAuth = { version: "v2c" as const, community: SNMP_COMMUNITY };
     const add = (name: string, extra: Record<string, unknown> = {}) =>
       DeviceMonitorService.create(userA, orgA.id, { name, host: "127.0.0.1", icmpEnabled: true, polling: { pollIntervalSec: 30, timeoutMs: 800, retryCount: 0 }, ...extra });
 
@@ -96,14 +95,14 @@ async function main() {
     await pay({ orgId: orgA.id, kind: "EXTRA_SLOTS", slots: 2, amount: 20_000, reference: "TRX-3" });
     ent = await SubscriptionService.getEntitlements(orgA.id);
     check(ent.deviceLimit === 5 && ent.extraSlots === 2, "2 extra slots raise the limit from 3 to 5", `limit ${ent.deviceLimit}`);
-    const snmpDevice = SNMP_PORT && cred
-      ? await DeviceMonitorService.create(userA, orgA.id, { name: `${tag}-snmp-dev`, host: "127.0.0.1", icmpEnabled: true, snmpEnabled: true, snmpCredentialId: cred, snmpPort: SNMP_PORT, polling: { pollIntervalSec: 30, timeoutMs: 1500, retryCount: 0 } })
+    const snmpDevice = SNMP_PORT
+      ? await DeviceMonitorService.create(userA, orgA.id, { name: `${tag}-snmp-dev`, host: "127.0.0.1", icmpEnabled: true, snmpEnabled: true, snmpAuth, snmpPort: SNMP_PORT, polling: { pollIntervalSec: 30, timeoutMs: 1500, retryCount: 0 } })
       : await add(`${tag}-d6`);
     check(typeof snmpDevice === "number", "the 4th device fits after buying slots");
     await rejects(() => SubscriptionService.setExtraSlots(orgA.id, 0), /remove 1 first/i, "removing slots below current usage is refused");
 
     console.log("\n[monitoring] real polls, real data");
-    const test = await DeviceMonitorService.test(orgA.id, { host: "127.0.0.1", icmp: true, tcpPorts: [], snmpCredentialId: cred ?? undefined, snmpPort: SNMP_PORT || 161 });
+    const test = await DeviceMonitorService.test(orgA.id, { host: "127.0.0.1", icmp: true, tcpPorts: [], snmpAuth: SNMP_PORT ? snmpAuth : undefined, snmpPort: SNMP_PORT || 161 });
     check(test.reachable === true && test.icmp?.reachable === true, "the wizard test reaches 127.0.0.1 by real ping");
     if (SNMP_PORT) check(test.snmp?.success === true && test.snmp.system?.sysName === "smoke-router", "SNMP test returns what the agent reported", JSON.stringify(test.snmp?.error));
     const report = await DeviceMonitorService.pollNow(orgA.id, snmpDevice);
@@ -115,9 +114,9 @@ async function main() {
       await DeviceMonitorService.pollNow(orgA.id, snmpDevice);
       const interfaces = await DeviceMonitorService.interfaces(orgA.id, snmpDevice);
       check(interfaces.length === 2 && interfaces.some((i) => i.name === "ether1"), "interfaces come from the device's own table", interfaces.map((i) => i.name).join(","));
-      const metrics = await DeviceMonitorService.metrics(orgA.id, snmpDevice, "1h");
+      const metrics = await DeviceMonitorService.metrics(orgA.id, snmpDevice, lastNMs(3_600_000, 30));
       check((metrics.cpu_pct?.length ?? 0) > 0 && metrics.cpu_pct![0].avg! > 0, "CPU history is bucketed real data", JSON.stringify(metrics.cpu_pct));
-      const traffic = await DeviceMonitorService.interfaceTraffic(orgA.id, snmpDevice, interfaces[0].id, "1h");
+      const traffic = await DeviceMonitorService.interfaceTraffic(orgA.id, snmpDevice, interfaces[0].id, lastNMs(3_600_000, 30));
       check(Array.isArray(traffic), "interface traffic can be charted");
     }
 
@@ -138,9 +137,8 @@ async function main() {
     await rejects(() => DeviceMonitorService.remove(userB, orgB.id, snmpDevice), /not found/i, "deleting another client's device");
     await rejects(() => DeviceMonitorService.interfaces(orgB.id, snmpDevice), /not found/i, "reading another client's interfaces");
     await rejects(() => AlertConfigService.deleteChannel(userB, orgB.id, channel), /not found/i, "deleting another client's channel");
-    await rejects(() => AlertConfigService.rotateCredential(userB, orgB.id, cred ?? channelCred, { label: "x", type: "snmp_v2c", community: "hijack" }), /not found/i, "replacing another client's credential");
+    await rejects(() => AlertConfigService.rotateCredential(userB, orgB.id, channelCred, { label: "x", type: "webhook_secret", secret: "hijack-secret" }), /not found/i, "replacing another client's credential");
     await rejects(() => AlertConfigService.createChannel(userB, orgB.id, { label: "b-hook", type: "webhook", url: "https://example.com/x", credentialId: channelCred }), /not found/i, "using another client's credential");
-    await rejects(() => DeviceMonitorService.create(userB, orgB.id, { name: "b1", host: "127.0.0.1", snmpEnabled: true, snmpCredentialId: cred ?? channelCred }), /not found/i, "using another client's credential on a device");
     const bIncidents = await IncidentService.list(orgB.id);
     check(bIncidents.total === 0, "the other client's incident list is empty");
     check((await DeviceMonitorService.fleet(orgB.id)).rows.length === 0, "the other client's fleet is empty");

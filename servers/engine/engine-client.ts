@@ -15,7 +15,8 @@ import type {
   MetricBucket,
   InterfaceBucket,
   SimulateRequestBody,
-  SimulateResult,
+  SimulateJobStarted,
+  SimulateJobStatus,
 } from "./engine-types";
 
 export class EngineError extends Error {
@@ -151,5 +152,6 @@ export const engine = {
   acknowledgeIncident: (id: string, by: string) => request<EngineIncident>("POST", `/incidents/${id}/acknowledge`, { body: { by } }),
 
   // admin
-  simulate: (body: SimulateRequestBody) => request<SimulateResult>("POST", "/admin/simulate", { body, timeoutMs: 120_000 }),
+  simulate: (body: SimulateRequestBody) => request<SimulateJobStarted>("POST", "/admin/simulate", { body }),
+  simulateStatus: (jobId: string) => request<SimulateJobStatus>("GET", `/admin/simulate/${jobId}`, { timeoutMs: 10_000 }),
 };

@@ -1,21 +1,22 @@
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/errors";
 import { ttlMemo } from "@/lib/ttl-memo";
+import type { ResolvedRange } from "@/lib/date-range";
 import { engine } from "../engine/engine-client";
 import { call } from "../engine/engine-call";
 import type { EngineFleetItem, InterfaceBucket, MetricBucket } from "../engine/engine-types";
 import { assertTargetAllowed } from "../monitoring/target-policy";
 import {
   CreateDeviceSchema,
-  RANGES,
   TestDeviceSchema,
   UpdateDeviceSchema,
   type CreateDeviceInput,
-  type RangeKey,
+  type SnmpAuthInput,
   type TestDeviceInput,
   type UpdateDeviceInput,
 } from "../validators/monitoring.validator";
 import { AuditService } from "./audit.service";
+import { DeviceGroupService } from "./device-group.service";
 import { DeviceService } from "./device.service";
 import { ResourceService } from "./resource.service";
 import { SubscriptionService } from "./subscription.service";
@@ -33,11 +34,11 @@ function checkInterval(pollIntervalSec: number | undefined, min: number) {
   }
 }
 
-// Translates the client's own credential id (our record) into the engine's id, proving the client owns it.
-async function engineCredentialId(orgId: number, credentialId: number | null | undefined) {
-  if (!credentialId) return null;
-  const c = await ResourceService.getOwned(orgId, "CREDENTIAL", credentialId);
-  return c.engineId;
+// The SNMP login as the engine wants it: only the fields that belong to the chosen version, without blanks.
+function engineSnmpAuth(a: SnmpAuthInput) {
+  const keep = (o: Record<string, string | undefined>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v.trim() !== ""));
+  if (a.version !== "v3") return { version: a.version, community: a.community };
+  return { version: a.version, ...keep({ username: a.username, authProtocol: a.authProtocol, authKey: a.authKey, privProtocol: a.privProtocol, privKey: a.privKey }) };
 }
 
 // Only physical links are summed: bridges, VLANs, bonds and PPP sessions carry traffic that is already counted on the ports below them.
@@ -73,13 +74,12 @@ export const DeviceMonitorService = {
     await requireLive(orgId);
     const input = TestDeviceSchema.parse(raw);
     await assertTargetAllowed(input.host);
-    const credentialId = await engineCredentialId(orgId, input.snmpCredentialId);
     return await call(orgId, () =>
       engine.testDevice({
         host: input.host,
         icmp: input.icmp,
         tcpPorts: input.tcpPorts,
-        ...(credentialId ? { snmp: { credentialId, port: input.snmpPort } } : {}),
+        ...(input.snmpAuth ? { snmp: { auth: engineSnmpAuth(input.snmpAuth), port: input.snmpPort } } : {}),
         timeoutMs: 3000,
         retries: 1,
       }),
@@ -91,10 +91,10 @@ export const DeviceMonitorService = {
     const ent = await requireLive(orgId);
     checkInterval(input.polling.pollIntervalSec, ent.minPollIntervalSec);
     await assertTargetAllowed(input.host);
-    const credentialId = await engineCredentialId(orgId, input.snmpCredentialId);
+    if (input.groupId) await DeviceGroupService.assertOwned(orgId, input.groupId);
 
     // 1) take a slot (fails when the quota is used up)  2) create in the engine  3) confirm, or give the slot back
-    const slot = await DeviceService.reserve({ orgId, name: input.name, createdById: actor.id, limit: ent.deviceLimit });
+    const slot = await DeviceService.reserve({ orgId, name: input.name, createdById: actor.id, limit: ent.deviceLimit, groupId: input.groupId });
     let engineId: string | null = null;
     try {
       const created = await call(orgId, () =>
@@ -107,7 +107,7 @@ export const DeviceMonitorService = {
           icmpEnabled: input.icmpEnabled,
           tcpPorts: input.tcpPorts,
           snmpEnabled: input.snmpEnabled,
-          snmpCredentialId: input.snmpEnabled ? credentialId : null,
+          snmpAuth: input.snmpEnabled && input.snmpAuth ? engineSnmpAuth(input.snmpAuth) : null,
           snmpPort: input.snmpPort,
           polling: { ...input.polling, pollIntervalSec: input.polling.pollIntervalSec ?? Math.max(30, ent.minPollIntervalSec) },
         }),
@@ -132,17 +132,21 @@ export const DeviceMonitorService = {
     if (input.host) await assertTargetAllowed(input.host);
 
     const patch: Record<string, unknown> = { ...input };
-    delete patch.snmpCredentialId;
-    // the map position lives in our own table; the engine does not know it
+    delete patch.snmpAuth;
+    // the map position and the group live in our own table; the engine does not know about either
     delete patch.latitude;
     delete patch.longitude;
-    if (input.snmpCredentialId !== undefined || input.snmpEnabled === false) {
-      patch.snmpCredentialId = input.snmpEnabled === false ? null : await engineCredentialId(orgId, input.snmpCredentialId);
-    }
+    delete patch.groupId;
+    if (input.snmpAuth) patch.snmpAuth = engineSnmpAuth(input.snmpAuth);
+    else if (input.snmpEnabled === false) patch.snmpAuth = null;
     if (!device.engineDeviceId) throw new AppError("This device is still being created.");
     if (Object.keys(patch).length > 0) await call(orgId, () => engine.updateDevice(device.engineDeviceId!, patch));
     if (input.latitude !== undefined || input.longitude !== undefined) {
       await DeviceService.setCoordinates(id, input.latitude ?? null, input.longitude ?? null);
+    }
+    if (input.groupId !== undefined) {
+      if (input.groupId) await DeviceGroupService.assertOwned(orgId, input.groupId);
+      await DeviceService.setGroup(id, input.groupId ?? null);
     }
     if (input.name && input.name !== device.name) await DeviceService.setName(id, input.name);
     await AuditService.log({ actorId: actor.id, orgId, action: "device.update", targetType: "Device", targetId: id });
@@ -377,15 +381,14 @@ export const DeviceMonitorService = {
     return { device, status };
   },
 
-  async metrics(orgId: number, id: number, range: RangeKey) {
+  async metrics(orgId: number, id: number, range: ResolvedRange) {
     const device = await DeviceService.getOwned(orgId, id);
     const engineId = device.engineDeviceId;
     if (!engineId) return {};
-    const { ms, bucketSec } = RANGES[range];
-    const from = new Date(Date.now() - ms);
+    const { from, to, bucketSec } = range;
     const names = ["cpu_pct", "memory_pct", "icmp_latency_ms", "icmp_packet_loss_pct", "snmp_response_ms"];
     const results = await Promise.all(
-      names.map((metric) => call(orgId, () => engine.metrics(engineId, { metric, from, bucketSec, limit: 1000 }))),
+      names.map((metric) => call(orgId, () => engine.metrics(engineId, { metric, from, to, bucketSec, limit: 1000 }))),
     );
     return Object.fromEntries(names.map((n, i) => [n, results[i].items as MetricBucket[]]));
   },
@@ -396,20 +399,22 @@ export const DeviceMonitorService = {
     return (await call(orgId, () => engine.interfaces(device.engineDeviceId!))).items;
   },
 
-  async interfaceTraffic(orgId: number, id: number, interfaceId: string, range: RangeKey) {
+  async interfaceTraffic(orgId: number, id: number, interfaceId: string, range: ResolvedRange) {
     const device = await DeviceService.getOwned(orgId, id);
     const engineId = device.engineDeviceId;
     if (!engineId) throw new AppError("Not found", 404);
     // the interface must belong to this device (which the client owns)
     const list = await call(orgId, () => engine.interfaces(engineId));
     if (!list.items.some((i) => i.id === interfaceId)) throw new AppError("Not found", 404);
-    const { ms, bucketSec } = RANGES[range];
-    const r = await call(orgId, () => engine.interfaceMetrics(engineId, interfaceId, { from: new Date(Date.now() - ms), bucketSec }));
+    const { from, to, bucketSec } = range;
+    const r = await call(orgId, () => engine.interfaceMetrics(engineId, interfaceId, { from, to, bucketSec }));
     return r.items;
   },
 
-  // Sums per-bucket traffic across several interfaces (the device's "all ports" view). One engine call per interface.
-  async interfaceTrafficMany(orgId: number, id: number, interfaceIds: string[], range: RangeKey): Promise<InterfaceBucket[]> {
+  // Sums per-bucket traffic across several interfaces (the device's "all ports" view). One engine call per interface,
+  // run in parallel: each is a small aggregate query (never the raw rows), and running them concurrently across
+  // separate DB connections is faster in practice than one combined query scanning all interfaces on a single core.
+  async interfaceTrafficMany(orgId: number, id: number, interfaceIds: string[], range: ResolvedRange): Promise<InterfaceBucket[]> {
     const device = await DeviceService.getOwned(orgId, id);
     const engineId = device.engineDeviceId;
     if (!engineId || interfaceIds.length === 0) return [];
@@ -417,9 +422,8 @@ export const DeviceMonitorService = {
     const list = await call(orgId, () => engine.interfaces(engineId));
     const valid = new Set(list.items.map((i) => i.id));
     const ids = interfaceIds.filter((x) => valid.has(x));
-    const { ms, bucketSec } = RANGES[range];
-    const from = new Date(Date.now() - ms);
-    const results = await Promise.all(ids.map((ifaceId) => call(orgId, () => engine.interfaceMetrics(engineId, ifaceId, { from, bucketSec }))));
+    const { from, to, bucketSec } = range;
+    const results = await Promise.all(ids.map((ifaceId) => call(orgId, () => engine.interfaceMetrics(engineId, ifaceId, { from, to, bucketSec }))));
 
     const merged = new Map<string, InterfaceBucket>();
     for (const { items } of results) {

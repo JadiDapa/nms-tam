@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { AppError } from "@/lib/errors";
 import { reachabilityRibbon } from "@/lib/availability";
 import AutoRefresh from "@/components/dashboard/AutoRefresh";
-import RangeTabs from "@/components/dashboard/RangeTabs";
+import DateRangePicker from "@/components/dashboard/DateRangePicker";
 import DeviceHeader from "./DeviceHeader";
 import DeviceIncidents from "./DeviceIncidents";
 import DeviceOverview from "./DeviceOverview";
@@ -16,22 +16,25 @@ import TrafficHistoryTable from "./TrafficHistoryTable";
 import TrafficVolumeCards from "./TrafficVolumeCards";
 import Link from "next/link";
 import { formatBps } from "@/lib/format";
-import { summarizeTraffic, TABLE_GROUP_SEC, TABLE_LABEL_FORMAT } from "@/lib/traffic-history";
+import { summarizeTraffic, tableGroupSec, tableLabelFormat } from "@/lib/traffic-history";
+import { lastNMs, rangeParams, type ResolvedRange } from "@/lib/date-range";
 import { DeviceMonitorService } from "@/servers/services/device-monitor.service";
+import { DeviceGroupService } from "@/servers/services/device-group.service";
 import { DeviceService } from "@/servers/services/device.service";
-import { AlertConfigService } from "@/servers/services/alert-config.service";
 import { IncidentService } from "@/servers/services/incident.service";
 import { SubscriptionService } from "@/servers/services/subscription.service";
-import { ResourceService } from "@/servers/services/resource.service";
-import { RANGES, type RangeKey } from "@/servers/validators/monitoring.validator";
 import type { EngineDeviceStatus, InterfaceBucket, MetricBucket } from "@/servers/engine/engine-types";
 
 type Props = {
   orgId: number;
   id: number;
   tab?: string;
-  range: RangeKey;
+  range: ResolvedRange;
   iface?: string;
+  // where this device's own links point; defaults to the client's own device page
+  basePath?: string;
+  // an admin looking at a client's device: hides mutating actions and the settings tab
+  readOnly?: boolean;
 };
 
 const TABS = [
@@ -75,8 +78,9 @@ function downsample(items: MetricBucket[], target = 30): (number | null)[] {
 }
 
 // One device: header and tabs on top, the chosen tab below. (The page only checks who is asking and hands over here.)
-export default async function DeviceDetail({ orgId, id, tab: rawTab, range, iface }: Props) {
-  const tab = TABS.some((t) => t.key === rawTab) ? rawTab! : "overview";
+export default async function DeviceDetail({ orgId, id, tab: rawTab, range, iface, basePath = "/dashboard/devices", readOnly = false }: Props) {
+  const tabs = readOnly ? TABS.filter((t) => t.key !== "settings") : TABS;
+  const tab = tabs.some((t) => t.key === rawTab) ? rawTab! : "overview";
 
   let detail;
   try {
@@ -99,21 +103,25 @@ export default async function DeviceDetail({ orgId, id, tab: rawTab, range, ifac
         disabledBy={device.disabledBy}
         status={status}
         canChange={ent.live}
+        basePath={basePath}
+        readOnly={readOnly}
       />
 
-      <DeviceTabs deviceId={id} tabs={TABS} current={tab} incidents={status.activeIncidents} />
+      <DeviceTabs deviceId={id} tabs={tabs} current={tab} incidents={status.activeIncidents} basePath={basePath} />
 
       {tab === "overview" && <OverviewTab orgId={orgId} id={id} status={status} paused={device.status === "SUSPENDED"} />}
-      {tab === "metrics" && <MetricsTab orgId={orgId} id={id} range={range} />}
-      {tab === "interfaces" && <InterfacesTab orgId={orgId} id={id} range={range} selected={iface} canChange={ent.live} />}
+      {tab === "metrics" && <MetricsTab orgId={orgId} id={id} range={range} basePath={basePath} />}
+      {tab === "interfaces" && <InterfacesTab orgId={orgId} id={id} range={range} selected={iface} canChange={!readOnly && ent.live} basePath={basePath} />}
       {tab === "incidents" && <IncidentsTab orgId={orgId} id={id} />}
-      {tab === "settings" && <SettingsTab orgId={orgId} id={id} status={status} canChange={ent.live} minPollIntervalSec={ent.minPollIntervalSec} />}
+      {!readOnly && tab === "settings" && (
+        <SettingsTab orgId={orgId} id={id} status={status} canChange={ent.live} minPollIntervalSec={ent.minPollIntervalSec} />
+      )}
     </main>
   );
 }
 
 async function OverviewTab({ orgId, id, status, paused }: { orgId: number; id: number; status: EngineDeviceStatus; paused: boolean }) {
-  const metrics = await DeviceMonitorService.metrics(orgId, id, "1h");
+  const metrics = await DeviceMonitorService.metrics(orgId, id, lastNMs(3_600_000, 30));
   const latency = metrics["icmp_latency_ms"] ?? [];
   const loss = metrics["icmp_packet_loss_pct"] ?? [];
 
@@ -139,15 +147,15 @@ async function OverviewTab({ orgId, id, status, paused }: { orgId: number; id: n
   );
 }
 
-async function MetricsTab({ orgId, id, range }: { orgId: number; id: number; range: RangeKey }) {
+async function MetricsTab({ orgId, id, range, basePath }: { orgId: number; id: number; range: ResolvedRange; basePath: string }) {
   const metrics = await DeviceMonitorService.metrics(orgId, id, range);
-  const bucketSec = RANGES[range].bucketSec;
+  const bucketSec = range.bucketSec;
   const p = (name: string) => toPoints(metrics[name] ?? []);
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <RangeTabs basePath={`/dashboard/devices/${id}`} current={range} extra={{ tab: "metrics" }} />
+        <DateRangePicker basePath={`${basePath}/${id}`} current={range} extra={{ tab: "metrics" }} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <MetricChart title="CPU usage" points={p("cpu_pct")} unit="pct" showMax bucketSec={bucketSec} />
@@ -160,12 +168,27 @@ async function MetricsTab({ orgId, id, range }: { orgId: number; id: number; ran
   );
 }
 
-async function InterfacesTab({ orgId, id, range, selected, canChange }: { orgId: number; id: number; range: RangeKey; selected?: string; canChange: boolean }) {
+async function InterfacesTab({
+  orgId,
+  id,
+  range,
+  selected,
+  canChange,
+  basePath,
+}: {
+  orgId: number;
+  id: number;
+  range: ResolvedRange;
+  selected?: string;
+  canChange: boolean;
+  basePath: string;
+}) {
   const interfaces = await DeviceMonitorService.interfaces(orgId, id);
   const chosen = interfaces.find((i) => i.id === selected);
   const monitored = interfaces.filter((i) => i.monitored);
-  const bucketSec = RANGES[range].bucketSec;
-  const allHref = `/dashboard/devices/${id}?tab=interfaces&range=${range}`;
+  const bucketSec = range.bucketSec;
+  const rangeQS = new URLSearchParams(rangeParams(range)).toString();
+  const allHref = `${basePath}/${id}?tab=interfaces&${rangeQS}`;
 
   // One fetch, reused by the live rate chart above and the traffic-history section below — both track whichever
   // port is selected (or the monitored aggregate when none is), so deselecting a port switches both at once.
@@ -190,7 +213,7 @@ async function InterfacesTab({ orgId, id, range, selected, canChange }: { orgId:
           <Link href={allHref} className="text-muted-foreground hover:text-foreground text-sm hover:underline">
             ← All ports (aggregate)
           </Link>
-          <RangeTabs basePath={`/dashboard/devices/${id}`} current={range} extra={{ tab: "interfaces", iface: chosen.id }} />
+          <DateRangePicker basePath={`${basePath}/${id}`} current={range} extra={{ tab: "interfaces", iface: chosen.id }} />
         </div>
         <div className="grid gap-4 lg:grid-cols-5">
           <div className="lg:col-span-2">
@@ -224,7 +247,7 @@ async function InterfacesTab({ orgId, id, range, selected, canChange }: { orgId:
     summary = (
       <div className="space-y-3">
         <div className="flex justify-end">
-          <RangeTabs basePath={`/dashboard/devices/${id}`} current={range} extra={{ tab: "interfaces" }} />
+          <DateRangePicker basePath={`${basePath}/${id}`} current={range} extra={{ tab: "interfaces" }} />
         </div>
         <div className="grid gap-4 lg:grid-cols-5">
           <div className="lg:col-span-2">
@@ -260,12 +283,12 @@ async function InterfacesTab({ orgId, id, range, selected, canChange }: { orgId:
   }
 
   const historyTitle = chosen ? chosen.name : monitored.length > 0 ? `${monitored.length} monitored port${monitored.length === 1 ? "" : "s"}` : null;
-  const history = summarizeTraffic(traffic, bucketSec, TABLE_GROUP_SEC[range]);
+  const history = summarizeTraffic(traffic, bucketSec, tableGroupSec(range));
 
   return (
     <div className="space-y-4">
       {summary}
-      <InterfaceTable deviceId={id} interfaces={interfaces} selected={chosen?.id} canChange={canChange} range={range} />
+      <InterfaceTable deviceId={id} interfaces={interfaces} selected={chosen?.id} canChange={canChange} rangeQS={rangeQS} basePath={basePath} />
 
       {historyTitle && traffic.length > 0 && (
         <div className="space-y-3">
@@ -283,7 +306,7 @@ async function InterfacesTab({ orgId, id, range, selected, canChange }: { orgId:
             </div>
             <MetricChart
               className="lg:col-span-3"
-              title={`Traffic — last ${RANGES[range].label}`}
+              title={`Traffic — ${range.label || "selected range"}`}
               points={trafficPoints(traffic, "in")}
               second={{ label: "outbound", points: trafficPoints(traffic, "out") }}
               firstLabel="inbound"
@@ -292,7 +315,7 @@ async function InterfacesTab({ orgId, id, range, selected, canChange }: { orgId:
               fillHeight
             />
           </div>
-          <TrafficHistoryTable rows={history.rows} labelFormat={TABLE_LABEL_FORMAT[range]} />
+          <TrafficHistoryTable rows={history.rows} labelFormat={tableLabelFormat(range)} />
         </div>
       )}
     </div>
@@ -320,21 +343,17 @@ async function IncidentsTab({ orgId, id }: { orgId: number; id: number }) {
 }
 
 async function SettingsTab({ orgId, id, status, canChange, minPollIntervalSec }: { orgId: number; id: number; status: EngineDeviceStatus; canChange: boolean; minPollIntervalSec: number }) {
-  const credentials = (await AlertConfigService.listCredentials(orgId)).filter((c) => c.type.startsWith("snmp_"));
-  const current = status.device.snmpCredentialId
-    ? await ResourceService.getOwnedByEngineId(orgId, "CREDENTIAL", status.device.snmpCredentialId).catch(() => null)
-    : null;
-  // the map position lives in our own device row (owner-checked), not in the engine
-  const owned = await DeviceService.getOwned(orgId, id);
+  // the map position and group live in our own device row (owner-checked), not in the engine
+  const [owned, groups] = await Promise.all([DeviceService.getOwned(orgId, id), DeviceGroupService.listByOrg(orgId)]);
 
   return (
     <DeviceSettingsForm
       deviceId={id}
       device={status.device}
-      currentCredentialId={current?.id ?? null}
       latitude={owned.latitude}
       longitude={owned.longitude}
-      credentials={credentials.map((c) => ({ id: c.id, label: c.label }))}
+      groupId={owned.groupId}
+      groups={groups.map((g) => ({ id: g.id, name: g.name }))}
       minPollIntervalSec={minPollIntervalSec}
       canChange={canChange}
     />

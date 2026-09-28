@@ -6,17 +6,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
-import { incidentsByDay, meanResolveMs } from "@/lib/incident-stats";
+import { incidentsByRange, meanResolveMs } from "@/lib/incident-stats";
+import { rangeParams, resolveDateRange } from "@/lib/date-range";
 import { AlertConfigService } from "@/servers/services/alert-config.service";
 import { IncidentService } from "@/servers/services/incident.service";
 import AutoRefresh from "../AutoRefresh";
+import DateRangePicker from "../DateRangePicker";
 import PageHeader from "../PageHeader";
 import { StatCard, StatGroup } from "../StatCard";
 import IncidentRow, { incidentDurationMs, type IncidentData } from "./IncidentRow";
 import IncidentsChart from "./IncidentsChart";
 import { SEVERITY_ORDER, SEVERITY_STYLE } from "./severity";
 
-export type IncidentsQuery = { status?: string; sev?: string; q?: string; all?: string };
+export type IncidentsQuery = { status?: string; sev?: string; q?: string; all?: string; range?: string; from?: string; to?: string };
 
 const TABS = [
   { key: "ACTIVE", label: "Active" },
@@ -34,7 +36,13 @@ const dayLabel = (t: number) => {
 
 // The incidents page: what is wrong now, how it has been going, and the full log with filters.
 export default async function IncidentsOverview({ orgId, query }: { orgId: number; query: IncidentsQuery }) {
-  const [{ items, total }, rules] = await Promise.all([IncidentService.list(orgId, {}), AlertConfigService.listRules(orgId)]);
+  // Incidents are sparse day-to-day, so default to "this month" rather than "today" (only for the chart's own picker).
+  const range = resolveDateRange({ range: "month", ...query });
+  // The engine has no time-range filter of its own, so a wider window asks for more history up front
+  // (capped, since incidents this old may already have aged out of what the engine keeps).
+  const spanDays = (range.to.getTime() - range.from.getTime()) / 86_400_000;
+  const limit = spanDays <= 1 ? 200 : spanDays <= 31 ? 500 : 1000;
+  const [{ items, total }, rules] = await Promise.all([IncidentService.list(orgId, { limit }), AlertConfigService.listRules(orgId)]);
 
   const now = new Date();
   const nowMs = now.getTime();
@@ -84,7 +92,7 @@ export default async function IncidentsOverview({ orgId, query }: { orgId: numbe
   }
 
   const href = (o: IncidentsQuery) => {
-    const p = new URLSearchParams();
+    const p = new URLSearchParams(rangeParams(range));
     const next = { status: tab, sev: sev, q: query.q, ...o };
     if (next.status && next.status !== "ACTIVE") p.set("status", next.status);
     if (next.sev) p.set("sev", next.sev);
@@ -103,12 +111,23 @@ export default async function IncidentsOverview({ orgId, query }: { orgId: numbe
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Incidents" subtitle="Problems found on your devices. Open one to see its details and an AI analysis of what is going on." />
-        <Button asChild variant="outline" className="rounded-xl">
-          <Link href="/dashboard/alerts">
-            <BellRing />
-            Alert rules
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <DateRangePicker
+            basePath="/dashboard/incidents"
+            current={range}
+            extra={{
+              ...(query.status && query.status !== "ACTIVE" ? { status: query.status } : {}),
+              ...(query.sev ? { sev: query.sev } : {}),
+              ...(query.q ? { q: query.q } : {}),
+            }}
+          />
+          <Button asChild variant="outline" className="rounded-xl">
+            <Link href="/dashboard/alerts">
+              <BellRing />
+              Alert rules
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
@@ -145,7 +164,7 @@ export default async function IncidentsOverview({ orgId, query }: { orgId: numbe
             caption="manage rules"
           />
         </StatGroup>
-        <IncidentsChart className="lg:col-span-3" days={incidentsByDay(all, 30, now)} />
+        <IncidentsChart className="lg:col-span-3" days={incidentsByRange(all, range)} rangeLabel={range.label || `${format(range.from, "d MMM")} – ${format(range.to, "d MMM")}`} />
       </div>
 
       <Card>

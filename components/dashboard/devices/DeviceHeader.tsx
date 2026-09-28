@@ -18,12 +18,15 @@ type Props = {
   disabledBy: string | null;
   status: EngineDeviceStatus;
   canChange: boolean;
+  basePath?: string;
+  // hides the action buttons: for an admin looking at a client's device, not for the client themselves
+  readOnly?: boolean;
 };
 
 const WORD: Record<string, string> = { UP: "Up", DOWN: "Down", DEGRADED: "Degraded", RECOVERING: "Recovering", UNKNOWN: "Status unknown" };
 
 // The device at a glance: what it is, whether it is well, for how long, and what you can do with it.
-export default function DeviceHeader({ deviceId, name, ownerStatus, disabledBy, status, canChange }: Props) {
+export default function DeviceHeader({ deviceId, name, ownerStatus, disabledBy, status, canChange, basePath = "/dashboard/devices", readOnly = false }: Props) {
   const paused = ownerStatus === "SUSPENDED";
   const { state, device } = status;
   const reach = state.reachability;
@@ -39,7 +42,7 @@ export default function DeviceHeader({ deviceId, name, ownerStatus, disabledBy, 
 
   return (
     <div className="space-y-3">
-      <Link href="/dashboard/devices" className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm transition-colors">
+      <Link href={basePath} className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm transition-colors">
         <ChevronLeft className="size-4" />
         All devices
       </Link>
@@ -86,7 +89,7 @@ export default function DeviceHeader({ deviceId, name, ownerStatus, disabledBy, 
             </div>
           </div>
 
-          <DeviceActions deviceId={deviceId} paused={paused} canChange={canChange} />
+          {!readOnly && <DeviceActions deviceId={deviceId} paused={paused} canChange={canChange} />}
         </CardContent>
       </Card>
     </div>

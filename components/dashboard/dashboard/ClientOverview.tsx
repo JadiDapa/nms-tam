@@ -97,6 +97,7 @@ export default async function ClientOverview({ orgId }: { orgId: number }) {
       <DeviceMapCard
         points={mapPoints}
         unlocated={rows.length - mapPoints.length}
+        devicesHref="/dashboard/devices"
       />
 
       <Suspense fallback={<ChartCardSkeleton />}>

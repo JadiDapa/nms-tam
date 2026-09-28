@@ -1,5 +1,5 @@
 import type { InterfaceBucket } from "@/servers/engine/engine-types";
-import type { RangeKey } from "@/servers/validators/monitoring.validator";
+import type { ResolvedRange } from "@/lib/date-range";
 
 export type HistoryRow = { t: number; inBps: number | null; outBps: number | null; peakBps: number | null; volumeBytes: number };
 
@@ -14,9 +14,21 @@ export type TrafficSummary = {
   rows: HistoryRow[];
 };
 
-// How the history log's rows are grouped, and how their time column reads, per selected range.
-export const TABLE_GROUP_SEC: Record<RangeKey, number> = { "1h": 300, "6h": 1_800, "24h": 3_600, "7d": 86_400 };
-export const TABLE_LABEL_FORMAT: Record<RangeKey, string> = { "1h": "HH:mm", "6h": "HH:mm", "24h": "HH:mm", "7d": "dd MMM" };
+// How the history log's rows are grouped, and how their time column reads — coarser as the selected window widens,
+// so a custom multi-week range does not produce thousands of one-row-per-minute entries.
+export function tableGroupSec(range: ResolvedRange): number {
+  const spanMs = range.to.getTime() - range.from.getTime();
+  const HOUR = 3_600_000;
+  const DAY = 86_400_000;
+  if (spanMs <= 6 * HOUR) return 300;
+  if (spanMs <= DAY) return 1_800;
+  if (spanMs <= 7 * DAY) return 3_600;
+  return 86_400;
+}
+
+export function tableLabelFormat(range: ResolvedRange): string {
+  return tableGroupSec(range) < 86_400 ? "HH:mm" : "dd MMM";
+}
 
 // Turns per-bucket average rates into a data-volume summary: bytes transferred (rate x bucket width, integrated),
 // peaks, and a coarser log. A bucket with no sample (both averages null) is skipped, never treated as zero.

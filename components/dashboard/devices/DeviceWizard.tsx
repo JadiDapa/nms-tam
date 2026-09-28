@@ -5,7 +5,7 @@ import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { AlertTriangle, Check, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,8 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import FormField from "../FormField";
-import CredentialDialog from "../credentials/CredentialDialog";
+import SnmpAuthFields from "./SnmpAuthFields";
+import GroupField, { type GroupOption } from "./GroupField";
 import TestResultView from "./TestResultView";
 import LocationPicker from "../map/LocationPicker";
 import { createDevice, testDevice } from "@/app/action/device.action";
@@ -35,7 +36,9 @@ import {
 import type { EngineTestResult } from "@/servers/engine/engine-types";
 
 type Props = {
-  credentials: { id: number; label: string; type: string }[];
+  groups: GroupOption[];
+  // preselected when arriving from a group's own "Add device" button
+  defaultGroupId?: number | null;
   minPollIntervalSec: number;
   used: number;
   limit: number;
@@ -45,12 +48,12 @@ const STEPS = ["Device", "Checks & test", "Polling"] as const;
 
 // Which fields each step must have valid before moving on.
 const STEP_FIELDS: Record<number, (keyof CreateDeviceInput)[]> = {
-  0: ["name", "host", "deviceType", "location", "latitude", "longitude"],
-  1: ["icmpEnabled", "tcpPorts", "snmpEnabled", "snmpCredentialId", "snmpPort"],
+  0: ["name", "host", "deviceType", "location", "latitude", "longitude", "groupId"],
+  1: ["icmpEnabled", "tcpPorts", "snmpEnabled", "snmpAuth", "snmpPort"],
   2: ["polling"],
 };
 
-export default function DeviceWizard({ credentials, minPollIntervalSec, used, limit }: Props) {
+export default function DeviceWizard({ groups, defaultGroupId, minPollIntervalSec, used, limit }: Props) {
   const [step, setStep] = useState(0);
   const [tcpText, setTcpText] = useState("");
   const [testing, startTesting] = useTransition();
@@ -67,10 +70,11 @@ export default function DeviceWizard({ credentials, minPollIntervalSec, used, li
       host: "",
       deviceType: "router",
       location: "",
+      groupId: defaultGroupId ?? undefined,
       icmpEnabled: true,
       tcpPorts: [],
       snmpEnabled: true,
-      snmpCredentialId: undefined,
+      snmpAuth: undefined,
       snmpPort: 161,
       enabled: true,
       polling: { pollIntervalSec: Math.max(30, minPollIntervalSec), timeoutMs: 3000, retryCount: 1 },
@@ -80,7 +84,7 @@ export default function DeviceWizard({ credentials, minPollIntervalSec, used, li
   const errors = form.formState.errors;
 
   // the test result is only valid for the exact settings it was run with
-  const fingerprint = JSON.stringify([values.host, values.icmpEnabled, values.tcpPorts, values.snmpEnabled, values.snmpCredentialId, values.snmpPort]);
+  const fingerprint = JSON.stringify([values.host, values.icmpEnabled, values.tcpPorts, values.snmpEnabled, values.snmpAuth, values.snmpPort]);
   const testIsCurrent = result !== null && testedFor === fingerprint;
 
   async function next() {
@@ -95,7 +99,7 @@ export default function DeviceWizard({ credentials, minPollIntervalSec, used, li
         host: v.host,
         icmp: v.icmpEnabled,
         tcpPorts: v.tcpPorts ?? [],
-        snmpCredentialId: v.snmpEnabled ? v.snmpCredentialId : undefined,
+        snmpAuth: v.snmpEnabled ? v.snmpAuth : undefined,
         snmpPort: v.snmpPort,
       });
       if (!r.ok) return void toast.error(r.error);
@@ -183,9 +187,18 @@ export default function DeviceWizard({ credentials, minPollIntervalSec, used, li
             <FormField label="IP address or host name" htmlFor="host" error={errors.host?.message} hint="Must be reachable from the internet.">
               <Input id="host" {...form.register("host")} placeholder="203.0.113.10" />
             </FormField>
-            <FormField label="Location" htmlFor="location" optional error={errors.location?.message}>
-              <Input id="location" {...form.register("location")} placeholder="e.g. Palembang POP" />
-            </FormField>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="Location" htmlFor="location" optional error={errors.location?.message}>
+                <Input id="location" {...form.register("location")} placeholder="e.g. Palembang POP" />
+              </FormField>
+              <Controller
+                name="groupId"
+                control={form.control}
+                render={({ field }) => (
+                  <GroupField groups={groups} value={field.value} onChange={field.onChange} error={errors.groupId?.message} />
+                )}
+              />
+            </div>
             <div className="space-y-2">
               <p className="text-sm font-medium">Position on the map</p>
               <LocationPicker
@@ -253,38 +266,14 @@ export default function DeviceWizard({ credentials, minPollIntervalSec, used, li
               {values.snmpEnabled && (
                 <div className="space-y-4 rounded-lg border p-4">
                   <Controller
-                    name="snmpCredentialId"
+                    name="snmpAuth"
                     control={form.control}
                     render={({ field }) => (
-                      <FormField label="SNMP credential" error={errors.snmpCredentialId?.message}>
-                        <div className="flex gap-2">
-                          <Select
-                            value={field.value ? String(field.value) : ""}
-                            onValueChange={(v) => field.onChange(Number(v))}
-                          >
-                            <SelectTrigger className="flex-1">
-                              <SelectValue placeholder={credentials.length ? "Choose a credential" : "Create one first"} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {credentials.map((c) => (
-                                <SelectItem key={c.id} value={String(c.id)}>
-                                  {c.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <CredentialDialog
-                            allowedTypes={["snmp_v2c", "snmp_v1", "snmp_v3"]}
-                            onCreated={(id) => field.onChange(id)}
-                            trigger={
-                              <Button type="button" variant="outline">
-                                <Plus className="size-4" />
-                                New
-                              </Button>
-                            }
-                          />
-                        </div>
-                      </FormField>
+                      <SnmpAuthFields
+                        value={field.value}
+                        onChange={field.onChange}
+                        errors={{ ...errors.snmpAuth, community: errors.snmpAuth?.community ?? (errors.snmpAuth?.message ? { message: errors.snmpAuth.message } : undefined) }}
+                      />
                     )}
                   />
                   <FormField label="SNMP port" htmlFor="snmpPort" error={errors.snmpPort?.message}>
@@ -423,6 +412,7 @@ export default function DeviceWizard({ credentials, minPollIntervalSec, used, li
               {(values.deviceType ?? "router").replace("_", " ")}
             </Badge>
             {values.location && <Badge variant="outline">{values.location}</Badge>}
+            {values.groupId && <Badge variant="outline">{groups.find((g) => g.id === values.groupId)?.name ?? "Group"}</Badge>}
           </div>
 
           <div className="space-y-1.5 border-t pt-4">

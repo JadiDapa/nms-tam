@@ -1,7 +1,10 @@
+import { Activity, CalendarDays, ListTree, UserCog } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, timeAgo } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import PageHeader from "@/components/dashboard/PageHeader";
+import { StatCard, StatGroup } from "@/components/dashboard/StatCard";
+import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import {
   Table,
   TableBody,
@@ -28,9 +31,25 @@ export default async function AuditPage() {
   };
   const orgName = (id: number | null) => orgs.find((x) => x.id === id)?.name ?? "";
 
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const today = entries.filter((e) => e.createdAt >= dayStart).length;
+
   return (
     <main className="w-full space-y-6">
       <PageHeader title="Audit Log" subtitle="Who changed what. The latest 300 entries." />
+
+      <StatGroup className="lg:grid-cols-4">
+        <StatCard label="Entries shown" value={entries.length} icon={ListTree} featured caption="latest 300" />
+        <StatCard label="Today" value={today} icon={CalendarDays} caption="actions since midnight" />
+        <StatCard label="Distinct actors" value={actorIds.length} icon={UserCog} caption="staff who made a change" />
+        <StatCard
+          label="Most recent"
+          value={entries[0] ? timeAgo(entries[0].createdAt) : "—"}
+          icon={Activity}
+          caption={entries[0] ? entries[0].action : "no activity yet"}
+        />
+      </StatGroup>
 
       <div className="bg-card rounded-lg border">
         <Table>
@@ -46,10 +65,12 @@ export default async function AuditPage() {
           <TableBody>
             {entries.map((e) => (
               <TableRow key={e.id}>
-                <TableCell className="ps-5 text-xs">{formatDateTime(e.createdAt)}</TableCell>
+                <TableCell className="text-muted-foreground ps-5 text-xs whitespace-nowrap">{formatDateTime(e.createdAt)}</TableCell>
                 <TableCell className="text-sm">{actorName(e.actorId)}</TableCell>
-                <TableCell className="text-sm">{orgName(e.orgId)}</TableCell>
-                <TableCell className="text-sm font-medium">{e.action}</TableCell>
+                <TableCell className="text-sm">{orgName(e.orgId) || <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell>
+                  <StatusBadge label={e.action} tone="blue" />
+                </TableCell>
                 <TableCell className="text-muted-foreground max-w-md truncate text-xs">
                   {e.targetType ? `${e.targetType} ${e.targetId ?? ""}` : ""} {e.metadata ? JSON.stringify(e.metadata) : ""}
                 </TableCell>

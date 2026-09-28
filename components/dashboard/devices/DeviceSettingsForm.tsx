@@ -5,7 +5,6 @@ import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +20,8 @@ import {
 } from "@/components/ui/select";
 import FormField from "../FormField";
 import LocationPicker from "../map/LocationPicker";
-import CredentialDialog from "../credentials/CredentialDialog";
+import SnmpAuthFields from "./SnmpAuthFields";
+import GroupField, { type GroupOption } from "./GroupField";
 import { updateDevice } from "@/app/action/device.action";
 import {
   DEVICE_TYPES,
@@ -33,17 +33,16 @@ import type { EngineDevice } from "@/servers/engine/engine-types";
 type Props = {
   deviceId: number;
   device: EngineDevice;
-  // the credential currently used (our id), if any
-  currentCredentialId: number | null;
   // where the device is on the map (kept by this app, not the engine)
   latitude: number | null;
   longitude: number | null;
-  credentials: { id: number; label: string }[];
+  groupId: number | null;
+  groups: GroupOption[];
   minPollIntervalSec: number;
   canChange: boolean;
 };
 
-export default function DeviceSettingsForm({ deviceId, device, currentCredentialId, latitude, longitude, credentials, minPollIntervalSec, canChange }: Props) {
+export default function DeviceSettingsForm({ deviceId, device, latitude, longitude, groupId, groups, minPollIntervalSec, canChange }: Props) {
   const [isPending, startTransition] = useTransition();
   const [tcpText, setTcpText] = useState(device.tcpPorts.join(", "));
   const router = useRouter();
@@ -57,10 +56,11 @@ export default function DeviceSettingsForm({ deviceId, device, currentCredential
       location: device.location ?? "",
       latitude,
       longitude,
+      groupId,
       icmpEnabled: device.icmpEnabled,
       tcpPorts: device.tcpPorts,
       snmpEnabled: device.snmpEnabled,
-      snmpCredentialId: currentCredentialId ?? undefined,
+      snmpAuth: device.snmpAuth ?? undefined,
       snmpPort: device.snmpPort,
       polling: {
         pollIntervalSec: device.polling.pollIntervalSec,
@@ -119,6 +119,13 @@ export default function DeviceSettingsForm({ deviceId, device, currentCredential
           <FormField label="Location" htmlFor="location" optional>
             <Input id="location" {...form.register("location")} />
           </FormField>
+          <Controller
+            name="groupId"
+            control={form.control}
+            render={({ field }) => (
+              <GroupField groups={groups} value={field.value} onChange={field.onChange} error={errors.groupId?.message} />
+            )}
+          />
           <div className="space-y-2 sm:col-span-2">
             <p className="text-sm font-medium">Position on the map</p>
             <LocationPicker
@@ -169,37 +176,19 @@ export default function DeviceSettingsForm({ deviceId, device, currentCredential
           />
           {values.snmpEnabled && (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Controller
-                name="snmpCredentialId"
-                control={form.control}
-                render={({ field }) => (
-                  <FormField label="SNMP credential" error={errors.snmpCredentialId?.message}>
-                    <div className="flex gap-2">
-                      <Select value={field.value ? String(field.value) : ""} onValueChange={(v) => field.onChange(Number(v))}>
-                        <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Choose a credential" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {credentials.map((c) => (
-                            <SelectItem key={c.id} value={String(c.id)}>
-                              {c.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <CredentialDialog
-                        allowedTypes={["snmp_v2c", "snmp_v1", "snmp_v3"]}
-                        onCreated={(id) => field.onChange(id)}
-                        trigger={
-                          <Button type="button" variant="outline" size="icon">
-                            <Plus className="size-4" />
-                          </Button>
-                        }
-                      />
-                    </div>
-                  </FormField>
-                )}
-              />
+              <div className="sm:col-span-2">
+                <Controller
+                  name="snmpAuth"
+                  control={form.control}
+                  render={({ field }) => (
+                    <SnmpAuthFields
+                      value={field.value}
+                      onChange={field.onChange}
+                      errors={{ ...errors.snmpAuth, community: errors.snmpAuth?.community ?? (errors.snmpAuth?.message ? { message: errors.snmpAuth.message } : undefined) }}
+                    />
+                  )}
+                />
+              </div>
               <FormField label="SNMP port" htmlFor="snmpPort" error={errors.snmpPort?.message}>
                 <Input id="snmpPort" type="number" {...form.register("snmpPort", { valueAsNumber: true })} />
               </FormField>

@@ -12,6 +12,8 @@ export type DeviceItem = {
   snmpHealth: string | null;
   deviceType: string;
   vendor: string | null;
+  groupId: number | null;
+  groupName: string | null;
   icmp: boolean;
   snmp: boolean;
   tcpPorts: number;

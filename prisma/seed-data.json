@@ -117,22 +117,6 @@
   ],
   "engineResources": [
     {
-      "id": 44,
-      "orgId": 12,
-      "kind": "CREDENTIAL",
-      "engineId": "f7f71e22-7415-452c-90de-52658d9b752e",
-      "label": "BGP-INTEGRA-CCR2116 SNMP",
-      "createdAt": "2026-09-21T05:52:15.461Z"
-    },
-    {
-      "id": 45,
-      "orgId": 12,
-      "kind": "CREDENTIAL",
-      "engineId": "b33ef2d8-8c9f-42ba-9a95-ebd0fa4410ec",
-      "label": "RT-POLDA-SUMSEL SNMP",
-      "createdAt": "2026-09-21T05:52:15.626Z"
-    },
-    {
       "id": 63,
       "orgId": 12,
       "kind": "CHANNEL",

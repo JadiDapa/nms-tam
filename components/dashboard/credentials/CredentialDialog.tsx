@@ -26,24 +26,16 @@ import {
 } from "@/components/ui/select";
 import FormField from "../FormField";
 import { createCredential, rotateCredential } from "@/app/action/credential.action";
-import {
-  AUTH_PROTOCOLS,
-  CredentialSchema,
-  PRIV_PROTOCOLS,
-  type CredentialInput,
-} from "@/servers/validators/monitoring.validator";
+import { CredentialSchema, type CredentialInput } from "@/servers/validators/monitoring.validator";
 
 export const CREDENTIAL_TYPE_LABELS: Record<string, string> = {
-  snmp_v2c: "SNMP v2c (community)",
-  snmp_v1: "SNMP v1 (community)",
-  snmp_v3: "SNMP v3 (user)",
   telegram_bot: "Telegram bot token",
   webhook_secret: "Webhook signing secret",
 };
 
 type Props = {
   trigger: ReactNode;
-  // limits the choices (the wizard only needs SNMP credentials)
+  // limits the choices
   allowedTypes?: string[];
   // rotate mode: the label and type are fixed and only the secret is replaced
   existing?: { id: number; label: string; type: string };
@@ -61,10 +53,6 @@ export default function CredentialDialog({ trigger, allowedTypes, existing, onCr
     defaultValues: {
       label: existing?.label ?? "",
       type: (existing?.type ?? types[0]) as CredentialInput["type"],
-      community: "",
-      username: "",
-      authKey: "",
-      privKey: "",
       botToken: "",
       secret: "",
     },
@@ -124,66 +112,6 @@ export default function CredentialDialog({ trigger, allowedTypes, existing, onCr
                   </FormField>
                 )}
               />
-            </>
-          )}
-
-          {(type === "snmp_v1" || type === "snmp_v2c") && (
-            <FormField label="Community string" htmlFor="community" error={errors.community?.message}>
-              <Input id="community" type="password" autoComplete="off" {...form.register("community")} />
-            </FormField>
-          )}
-
-          {type === "snmp_v3" && (
-            <>
-              <FormField label="Username" htmlFor="username" error={errors.username?.message}>
-                <Input id="username" autoComplete="off" {...form.register("username")} />
-              </FormField>
-              <div className="grid grid-cols-2 gap-3">
-                <Controller
-                  name="authProtocol"
-                  control={form.control}
-                  render={({ field }) => (
-                    <FormField label="Auth protocol" optional>
-                      <Select value={field.value ?? "none"} onValueChange={(v) => field.onChange(v === "none" ? undefined : v)}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {AUTH_PROTOCOLS.map((p) => (
-                            <SelectItem key={p} value={p}>{p}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormField>
-                  )}
-                />
-                <FormField label="Auth key" htmlFor="authKey" optional error={errors.authKey?.message}>
-                  <Input id="authKey" type="password" autoComplete="off" {...form.register("authKey")} />
-                </FormField>
-                <Controller
-                  name="privProtocol"
-                  control={form.control}
-                  render={({ field }) => (
-                    <FormField label="Privacy protocol" optional>
-                      <Select value={field.value ?? "none"} onValueChange={(v) => field.onChange(v === "none" ? undefined : v)}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {PRIV_PROTOCOLS.map((p) => (
-                            <SelectItem key={p} value={p}>{p}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormField>
-                  )}
-                />
-                <FormField label="Privacy key" htmlFor="privKey" optional error={errors.privKey?.message}>
-                  <Input id="privKey" type="password" autoComplete="off" {...form.register("privKey")} />
-                </FormField>
-              </div>
             </>
           )}
 
