@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { AppError } from "@/lib/errors";
 import { reachabilityRibbon } from "@/lib/availability";
@@ -83,14 +83,18 @@ export default async function DeviceDetail({ orgId, id, tab: rawTab, range, ifac
   const tab = tabs.some((t) => t.key === rawTab) ? rawTab! : "overview";
 
   let detail;
+  let entitlements!: Awaited<ReturnType<typeof SubscriptionService.getEntitlements>>;
   try {
-    detail = await DeviceMonitorService.detail(orgId, id);
+    // independent lookups (DB vs engine): run them side by side
+    const [d, ent] = await Promise.all([DeviceMonitorService.detail(orgId, id), SubscriptionService.getEntitlements(orgId)]);
+    detail = d;
+    entitlements = ent;
   } catch (err) {
     if (err instanceof AppError && err.status === 404) notFound();
     throw err;
   }
   const { device, status } = detail;
-  const ent = await SubscriptionService.getEntitlements(orgId);
+  const ent = entitlements;
 
   return (
     <main className="w-full space-y-6">
@@ -190,19 +194,20 @@ async function InterfacesTab({
   const rangeQS = new URLSearchParams(rangeParams(range)).toString();
   const allHref = `${basePath}/${id}?tab=interfaces&${rangeQS}`;
 
-  // One fetch, reused by the live rate chart above and the traffic-history section below — both track whichever
-  // port is selected (or the monitored aggregate when none is), so deselecting a port switches both at once.
-  let traffic: InterfaceBucket[] = [];
-  if (chosen) {
-    traffic = await DeviceMonitorService.interfaceTraffic(orgId, id, chosen.id, range);
-  } else if (monitored.length > 0) {
-    traffic = await DeviceMonitorService.interfaceTrafficMany(
-      orgId,
-      id,
-      monitored.map((i) => i.id),
-      range,
-    );
-  }
+  // Started here but NOT awaited: the port list below renders straight away and the charts stream in when the engine
+  // answers. One fetch, shared by the live rate chart and the traffic-history section (both follow the selected port,
+  // or the monitored aggregate when none is).
+  const traffic: Promise<InterfaceBucket[]> = chosen
+    ? DeviceMonitorService.interfaceTraffic(orgId, id, chosen.id, range)
+    : monitored.length > 0
+      ? DeviceMonitorService.interfaceTrafficMany(
+          orgId,
+          id,
+          monitored.map((i) => i.id),
+          range,
+        )
+      : Promise.resolve([]);
+  const streamKey = `${chosen?.id ?? "all"}|${rangeQS}`;
 
   let summary: ReactNode = null;
 
@@ -215,28 +220,20 @@ async function InterfacesTab({
           </Link>
           <DateRangePicker basePath={`${basePath}/${id}`} current={range} extra={{ tab: "interfaces", iface: chosen.id }} />
         </div>
-        <div className="grid gap-4 lg:grid-cols-5">
-          <div className="lg:col-span-2">
-            <InterfaceSummaryCards
-              inBps={chosen.latest?.inBps ?? null}
-              outBps={chosen.latest?.outBps ?? null}
-              peakTotalBps={peakTotal(traffic)}
-              capacityBps={chosen.speedBps}
-              capacityLabel={chosen.speedBps ? formatBps(chosen.speedBps) : "unknown link speed"}
-              statusLabel={!chosen.active ? "inactive" : chosen.operStatus === "up" ? "Oper UP" : "Oper DOWN"}
-            />
-          </div>
-          <MetricChart
-            className="lg:col-span-3"
-            title={`Traffic on ${chosen.name}`}
-            points={trafficPoints(traffic, "in")}
-            second={{ label: "outbound", points: trafficPoints(traffic, "out") }}
-            firstLabel="inbound"
-            unit="bps"
+        <Suspense key={streamKey} fallback={<ChartsSkeleton />}>
+          <SummaryGrid
+            traffic={traffic}
             bucketSec={bucketSec}
-            fillHeight
+            chartTitle={`Traffic on ${chosen.name}`}
+            cards={{
+              inBps: chosen.latest?.inBps ?? null,
+              outBps: chosen.latest?.outBps ?? null,
+              capacityBps: chosen.speedBps,
+              capacityLabel: chosen.speedBps ? formatBps(chosen.speedBps) : "unknown link speed",
+              statusLabel: !chosen.active ? "inactive" : chosen.operStatus === "up" ? "Oper UP" : "Oper DOWN",
+            }}
           />
-        </div>
+        </Suspense>
         <p className="text-muted-foreground text-xs">Rates are computed from real counter differences. Gaps mean no valid rate was available.</p>
       </div>
     );
@@ -249,30 +246,22 @@ async function InterfacesTab({
         <div className="flex justify-end">
           <DateRangePicker basePath={`${basePath}/${id}`} current={range} extra={{ tab: "interfaces" }} />
         </div>
-        <div className="grid gap-4 lg:grid-cols-5">
-          <div className="lg:col-span-2">
-            <InterfaceSummaryCards
-              inBps={monitored.reduce((sum, i) => sum + (i.latest?.inBps ?? 0), 0)}
-              outBps={monitored.reduce((sum, i) => sum + (i.latest?.outBps ?? 0), 0)}
-              peakTotalBps={peakTotal(traffic)}
-              capacityBps={capacityBps}
-              capacityLabel={
-                capacityBps ? `${formatBps(capacityBps)} aggregate${known.length < monitored.length ? " (some ports unknown)" : ""}` : "unknown link speed"
-              }
-              statusLabel="Multi-port"
-            />
-          </div>
-          <MetricChart
-            className="lg:col-span-3"
-            title="Traffic — all monitored ports"
-            points={trafficPoints(traffic, "in")}
-            second={{ label: "outbound", points: trafficPoints(traffic, "out") }}
-            firstLabel="inbound"
-            unit="bps"
+        <Suspense key={streamKey} fallback={<ChartsSkeleton />}>
+          <SummaryGrid
+            traffic={traffic}
             bucketSec={bucketSec}
-            fillHeight
+            chartTitle="Traffic — all monitored ports"
+            cards={{
+              inBps: monitored.reduce((sum, i) => sum + (i.latest?.inBps ?? 0), 0),
+              outBps: monitored.reduce((sum, i) => sum + (i.latest?.outBps ?? 0), 0),
+              capacityBps,
+              capacityLabel: capacityBps
+                ? `${formatBps(capacityBps)} aggregate${known.length < monitored.length ? " (some ports unknown)" : ""}`
+                : "unknown link speed",
+              statusLabel: "Multi-port",
+            }}
           />
-        </div>
+        </Suspense>
         <p className="text-muted-foreground text-xs">
           Sum of {monitored.length} monitored port{monitored.length === 1 ? "" : "s"}. Pick a port below to see it on its own.
         </p>
@@ -283,41 +272,83 @@ async function InterfacesTab({
   }
 
   const historyTitle = chosen ? chosen.name : monitored.length > 0 ? `${monitored.length} monitored port${monitored.length === 1 ? "" : "s"}` : null;
-  const history = summarizeTraffic(traffic, bucketSec, tableGroupSec(range));
 
   return (
     <div className="space-y-4">
       {summary}
       <InterfaceTable deviceId={id} interfaces={interfaces} selected={chosen?.id} canChange={canChange} rangeQS={rangeQS} basePath={basePath} />
 
-      {historyTitle && traffic.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-medium">{historyTitle} — traffic history</p>
-            {chosen && (
-              <Link href={allHref} className="text-muted-foreground hover:text-foreground text-xs hover:underline">
-                ← All ports (aggregate)
-              </Link>
-            )}
-          </div>
-          <div className="grid gap-4 lg:grid-cols-5">
-            <div className="lg:col-span-2">
-              <TrafficVolumeCards summary={history} />
-            </div>
-            <MetricChart
-              className="lg:col-span-3"
-              title={`Traffic — ${range.label || "selected range"}`}
-              points={trafficPoints(traffic, "in")}
-              second={{ label: "outbound", points: trafficPoints(traffic, "out") }}
-              firstLabel="inbound"
-              unit="bps"
-              bucketSec={bucketSec}
-              fillHeight
-            />
-          </div>
-          <TrafficHistoryTable rows={history.rows} labelFormat={tableLabelFormat(range)} />
-        </div>
+      {historyTitle && (
+        <Suspense key={streamKey} fallback={<ChartsSkeleton />}>
+          <TrafficHistory traffic={traffic} range={range} title={historyTitle} showBack={!!chosen} allHref={allHref} />
+        </Suspense>
       )}
+    </div>
+  );
+}
+
+type SummaryCards = { inBps: number | null; outBps: number | null; capacityBps: number | null; capacityLabel: string; statusLabel: string };
+
+async function SummaryGrid({ traffic, bucketSec, chartTitle, cards }: { traffic: Promise<InterfaceBucket[]>; bucketSec: number; chartTitle: string; cards: SummaryCards }) {
+  const items = await traffic;
+  return (
+    <div className="grid gap-4 lg:grid-cols-5">
+      <div className="lg:col-span-2">
+        <InterfaceSummaryCards {...cards} peakTotalBps={peakTotal(items)} />
+      </div>
+      <MetricChart
+        className="lg:col-span-3"
+        title={chartTitle}
+        points={trafficPoints(items, "in")}
+        second={{ label: "outbound", points: trafficPoints(items, "out") }}
+        firstLabel="inbound"
+        unit="bps"
+        bucketSec={bucketSec}
+        fillHeight
+      />
+    </div>
+  );
+}
+
+async function TrafficHistory({ traffic, range, title, showBack, allHref }: { traffic: Promise<InterfaceBucket[]>; range: ResolvedRange; title: string; showBack: boolean; allHref: string }) {
+  const items = await traffic;
+  if (items.length === 0) return null;
+  const history = summarizeTraffic(items, range.bucketSec, tableGroupSec(range));
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">{title} — traffic history</p>
+        {showBack && (
+          <Link href={allHref} className="text-muted-foreground hover:text-foreground text-xs hover:underline">
+            ← All ports (aggregate)
+          </Link>
+        )}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-5">
+        <div className="lg:col-span-2">
+          <TrafficVolumeCards summary={history} />
+        </div>
+        <MetricChart
+          className="lg:col-span-3"
+          title={`Traffic — ${range.label || "selected range"}`}
+          points={trafficPoints(items, "in")}
+          second={{ label: "outbound", points: trafficPoints(items, "out") }}
+          firstLabel="inbound"
+          unit="bps"
+          bucketSec={range.bucketSec}
+          fillHeight
+        />
+      </div>
+      <TrafficHistoryTable rows={history.rows} labelFormat={tableLabelFormat(range)} />
+    </div>
+  );
+}
+
+function ChartsSkeleton() {
+  return (
+    <div className="grid gap-4 lg:grid-cols-5" aria-busy="true">
+      <div className="bg-muted h-56 animate-pulse rounded-2xl lg:col-span-2" />
+      <div className="bg-muted h-56 animate-pulse rounded-2xl lg:col-span-3" />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/errors";
 import { ttlMemo } from "@/lib/ttl-memo";
@@ -64,6 +65,27 @@ function slotWindow(completeOnly = false) {
   const SLOTS = 12;
   const end = Math.floor(Date.now() / SLOT) * SLOT - (completeOnly ? SLOT : 0);
   return { SLOT, SLOTS, start: end - (SLOTS - 1) * SLOT };
+}
+
+// Read-only lookups shared by everything rendered in ONE request (the page, its header and each tab section all need the
+// same device row and interface list). `cache` dedupes them per request, so they hit the DB / engine once, not once per section.
+// Never used by mutating paths.
+const ownedDevice = cache((orgId: number, id: number) => DeviceService.getOwned(orgId, id));
+const deviceInterfaces = cache(async (orgId: number, engineId: string) => (await call(orgId, () => engine.interfaces(engineId))).items);
+
+// Runs `fn` over `items` with at most `limit` in flight, so a device with dozens of ports does not flood the engine (429).
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]);
+      }
+    }),
+  );
+  return out;
 }
 
 export const DeviceMonitorService = {
@@ -375,7 +397,7 @@ export const DeviceMonitorService = {
   },
 
   async detail(orgId: number, id: number) {
-    const device = await DeviceService.getOwned(orgId, id);
+    const device = await ownedDevice(orgId, id);
     if (!device.engineDeviceId) throw new AppError("This device is still being created.");
     const status = await call(orgId, () => engine.deviceStatus(device.engineDeviceId!));
     return { device, status };
@@ -394,18 +416,18 @@ export const DeviceMonitorService = {
   },
 
   async interfaces(orgId: number, id: number) {
-    const device = await DeviceService.getOwned(orgId, id);
+    const device = await ownedDevice(orgId, id);
     if (!device.engineDeviceId) return [];
-    return (await call(orgId, () => engine.interfaces(device.engineDeviceId!))).items;
+    return await deviceInterfaces(orgId, device.engineDeviceId);
   },
 
   async interfaceTraffic(orgId: number, id: number, interfaceId: string, range: ResolvedRange) {
-    const device = await DeviceService.getOwned(orgId, id);
+    const device = await ownedDevice(orgId, id);
     const engineId = device.engineDeviceId;
     if (!engineId) throw new AppError("Not found", 404);
     // the interface must belong to this device (which the client owns)
-    const list = await call(orgId, () => engine.interfaces(engineId));
-    if (!list.items.some((i) => i.id === interfaceId)) throw new AppError("Not found", 404);
+    const list = await deviceInterfaces(orgId, engineId);
+    if (!list.some((i) => i.id === interfaceId)) throw new AppError("Not found", 404);
     const { from, to, bucketSec } = range;
     const r = await call(orgId, () => engine.interfaceMetrics(engineId, interfaceId, { from, to, bucketSec }));
     return r.items;
@@ -415,15 +437,15 @@ export const DeviceMonitorService = {
   // run in parallel: each is a small aggregate query (never the raw rows), and running them concurrently across
   // separate DB connections is faster in practice than one combined query scanning all interfaces on a single core.
   async interfaceTrafficMany(orgId: number, id: number, interfaceIds: string[], range: ResolvedRange): Promise<InterfaceBucket[]> {
-    const device = await DeviceService.getOwned(orgId, id);
+    const device = await ownedDevice(orgId, id);
     const engineId = device.engineDeviceId;
     if (!engineId || interfaceIds.length === 0) return [];
     // the interfaces must belong to this device (which the client owns)
-    const list = await call(orgId, () => engine.interfaces(engineId));
-    const valid = new Set(list.items.map((i) => i.id));
+    const list = await deviceInterfaces(orgId, engineId);
+    const valid = new Set(list.map((i) => i.id));
     const ids = interfaceIds.filter((x) => valid.has(x));
     const { from, to, bucketSec } = range;
-    const results = await Promise.all(ids.map((ifaceId) => call(orgId, () => engine.interfaceMetrics(engineId, ifaceId, { from, to, bucketSec }))));
+    const results = await mapLimit(ids, 8, (ifaceId) => call(orgId, () => engine.interfaceMetrics(engineId, ifaceId, { from, to, bucketSec })));
 
     const merged = new Map<string, InterfaceBucket>();
     for (const { items } of results) {
