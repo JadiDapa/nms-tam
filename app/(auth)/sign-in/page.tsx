@@ -10,7 +10,7 @@ export default async function SignInPage() {
 
   return (
     <AuthShell
-      title="Welcome back"
+      title="Welcome back!"
       description="Sign in to your account to continue"
       footer="Accounts are created by invitation. Ask your administrator if you need access."
     >
