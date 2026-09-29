@@ -44,9 +44,10 @@ export async function updateDevice(deviceId: number, input: UpdateDeviceInput) {
 export async function deleteDevice(deviceId: number) {
   return run(async () => {
     const { user, orgId } = await assertClient();
-    await DeviceMonitorService.remove(user, orgId, deviceId);
+    const { engineCleanupFailed } = await DeviceMonitorService.remove(user, orgId, deviceId);
     refresh();
     revalidatePath("/dashboard/alerts");
+    return { engineCleanupFailed };
   });
 }
 

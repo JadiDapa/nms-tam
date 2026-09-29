@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { DeviceStatus, DisabledBy } from "@/generated/prisma";
+import { DeviceStatus, DisabledBy, Prisma } from "@/generated/prisma";
 import { AppError } from "@/lib/errors";
 
 // The ownership mirror of engine devices. A row here = one slot of the client's quota.
@@ -46,7 +46,13 @@ export const DeviceService = {
   },
 
   async release(id: number) {
-    await prisma.device.delete({ where: { id } }).catch(() => undefined);
+    try {
+      await prisma.device.delete({ where: { id } });
+    } catch (err) {
+      // Already gone (e.g. a retried delete) is fine; anything else means the slot is still held and must surface.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") return;
+      throw err;
+    }
   },
 
   async setCoordinates(id: number, latitude: number | null, longitude: number | null) {

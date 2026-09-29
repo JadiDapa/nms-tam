@@ -27,6 +27,8 @@ type Props = {
   onConfirm: () => Promise<ActionResult<unknown>>;
   // where to go after success (default: stay and refresh)
   redirectTo?: string;
+  // override the default success toast based on the action's returned data (e.g. a partial-success warning)
+  onSuccess?: (data: unknown) => void;
 };
 
 // A button that asks "are you sure?" before running a server action, then shows the real result.
@@ -39,6 +41,7 @@ export default function ConfirmAction({
   destructive,
   onConfirm,
   redirectTo,
+  onSuccess,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -48,7 +51,8 @@ export default function ConfirmAction({
     startTransition(async () => {
       const result = await onConfirm();
       if (!result.ok) return void toast.error(result.error);
-      toast.success(successMessage);
+      if (onSuccess) onSuccess(result.data);
+      else toast.success(successMessage);
       setOpen(false);
       if (redirectTo) router.push(redirectTo);
       else router.refresh();

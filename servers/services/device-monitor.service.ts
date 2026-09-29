@@ -175,22 +175,38 @@ export const DeviceMonitorService = {
   },
 
   // Removing a device frees its slot. Allowed even when the subscription has expired.
+  // The client's own record always goes, even if the engine won't cooperate — a stuck engine call must never
+  // leave the device stuck on the dashboard. When engine cleanup fails, we say so instead of pretending it worked.
   async remove(actor: { id: number }, orgId: number, id: number) {
     const device = await DeviceService.getOwned(orgId, id);
+    let engineCleanupFailed = false;
     if (device.engineDeviceId) {
       const engineId = device.engineDeviceId;
-      // alert rules of this device disappear with it in the engine; forget their records too
-      const ruleRecords = await prisma.engineResource.findMany({ where: { orgId, kind: "ALERT_RULE" } });
-      const rules = await call(orgId, () => engine.listRules(ruleRecords.map((r) => r.engineId)));
-      const gone = rules.items.filter((r) => r.deviceId === engineId).map((r) => r.id);
-      await call(orgId, () => engine.deleteDevice(engineId)).catch((err) => {
-        if (err instanceof AppError && err.status === 404) return;
-        throw err;
-      });
-      await ResourceService.removeByEngineIds(gone);
+      try {
+        // alert rules of this device disappear with it in the engine; forget their records too
+        const ruleRecords = await prisma.engineResource.findMany({ where: { orgId, kind: "ALERT_RULE" } });
+        const rules = await call(orgId, () => engine.listRules(ruleRecords.map((r) => r.engineId)));
+        const gone = rules.items.filter((r) => r.deviceId === engineId).map((r) => r.id);
+        await call(orgId, () => engine.deleteDevice(engineId)).catch((err) => {
+          if (err instanceof AppError && err.status === 404) return;
+          throw err;
+        });
+        await ResourceService.removeByEngineIds(gone);
+      } catch (err) {
+        engineCleanupFailed = true;
+        console.error(`device.delete: engine cleanup failed for device ${id} (org ${orgId}), forcing local removal`, err);
+      }
     }
     await DeviceService.release(id);
-    await AuditService.log({ actorId: actor.id, orgId, action: "device.delete", targetType: "Device", targetId: id, metadata: { name: device.name } });
+    await AuditService.log({
+      actorId: actor.id,
+      orgId,
+      action: "device.delete",
+      targetType: "Device",
+      targetId: id,
+      metadata: { name: device.name, engineCleanupFailed },
+    });
+    return { engineCleanupFailed };
   },
 
   // The client pauses or resumes polling of one device (the slot stays used either way).

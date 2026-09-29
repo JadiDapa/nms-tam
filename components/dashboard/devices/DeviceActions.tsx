@@ -91,9 +91,16 @@ export default function DeviceActions({ deviceId, paused, canChange }: Props) {
         description="Monitoring stops, its history and alert rules are removed, and the slot becomes free. This cannot be undone."
         confirmLabel="Delete device"
         destructive
-        successMessage="Device deleted"
         redirectTo="/dashboard/devices"
         onConfirm={() => deleteDevice(deviceId)}
+        onSuccess={(data) => {
+          const engineCleanupFailed = (data as { engineCleanupFailed?: boolean } | undefined)?.engineCleanupFailed;
+          if (engineCleanupFailed) {
+            toast.warning("Device deleted, but the monitoring engine couldn't be reached to fully clean up its data there.");
+          } else {
+            toast.success("Device deleted");
+          }
+        }}
       />
 
       <Dialog open={report !== null} onOpenChange={(o) => !o && setReport(null)}>
