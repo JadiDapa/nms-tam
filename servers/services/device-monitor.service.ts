@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/errors";
-import { ttlMemo } from "@/lib/ttl-memo";
+import { invalidateTtlMemo, ttlMemo } from "@/lib/ttl-memo";
 import type { ResolvedRange } from "@/lib/date-range";
 import { engine } from "../engine/engine-client";
 import { call } from "../engine/engine-call";
@@ -88,6 +88,14 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
   return out;
 }
 
+// Drops the cached read-side snapshots for an org so the next request reflects a device add/remove/status
+// change immediately, instead of waiting out the TTL.
+function invalidateFleetCache(orgId: number) {
+  invalidateTtlMemo(`extras:${orgId}`);
+  invalidateTtlMemo(`latency:${orgId}`);
+  invalidateTtlMemo(`traffic:${orgId}`);
+}
+
 export const DeviceMonitorService = {
   // ---- add / change ------------------------------------------------------------------------------------------------
 
@@ -143,6 +151,7 @@ export const DeviceMonitorService = {
       throw err;
     }
     await AuditService.log({ actorId: actor.id, orgId, action: "device.create", targetType: "Device", targetId: slot.id, metadata: { name: input.name, host: input.host } });
+    invalidateFleetCache(orgId);
     return slot.id;
   },
 
@@ -206,6 +215,7 @@ export const DeviceMonitorService = {
       targetId: id,
       metadata: { name: device.name, engineCleanupFailed },
     });
+    invalidateFleetCache(orgId);
     return { engineCleanupFailed };
   },
 
@@ -217,6 +227,7 @@ export const DeviceMonitorService = {
     await call(orgId, () => engine.updateDevice(device.engineDeviceId!, { enabled }));
     await DeviceService.setStatus(id, enabled ? "ACTIVE" : "SUSPENDED", enabled ? null : "USER");
     await AuditService.log({ actorId: actor.id, orgId, action: enabled ? "device.resume" : "device.pause", targetType: "Device", targetId: id });
+    invalidateFleetCache(orgId);
   },
 
   async pollNow(orgId: number, id: number) {

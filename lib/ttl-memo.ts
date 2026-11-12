@@ -13,3 +13,8 @@ export function ttlMemo<T>(key: string, ttlMs: number, fn: () => Promise<T>): Pr
   store.set(key, { expires: Date.now() + ttlMs, value });
   return value;
 }
+
+// Forces the next call for this key to recompute instead of waiting out the TTL (e.g. a device was just deleted).
+export function invalidateTtlMemo(key: string): void {
+  store.delete(key);
+}
