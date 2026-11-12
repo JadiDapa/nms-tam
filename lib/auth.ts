@@ -75,3 +75,16 @@ export async function assertClient(): Promise<{ user: User; orgId: number }> {
   if (user.role !== "USER" || user.orgId === null) throw forbidden();
   return { user, orgId: user.orgId };
 }
+
+// For actions a client can do on their own org, or an admin can do on a client's org (e.g. editing a
+// device's settings from the admin side). For USER the given orgId must still be their own; for ADMIN
+// it is trusted the same way an admin-only action's orgId argument already is (see organization.action.ts).
+export async function assertClientOrAdmin(orgId: number): Promise<{ user: User; orgId: number }> {
+  const user = await assertUser();
+  if (user.role === "USER") {
+    if (user.orgId !== orgId) throw forbidden();
+    return { user, orgId };
+  }
+  if (user.role === "ADMIN") return { user, orgId };
+  throw forbidden();
+}

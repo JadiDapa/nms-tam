@@ -22,12 +22,13 @@ import { createDeviceGroup } from "@/app/action/device-group.action";
 import { DeviceGroupSchema, type DeviceGroupInput } from "@/servers/validators/monitoring.validator";
 
 type Props = {
+  orgId: number;
   trigger: ReactNode;
   onCreated?: (group: { id: number; name: string }) => void;
 };
 
 // A one-field dialog for adding a device group on the fly, from the wizard's select or the device list page.
-export default function GroupDialog({ trigger, onCreated }: Props) {
+export default function GroupDialog({ orgId, trigger, onCreated }: Props) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -40,7 +41,7 @@ export default function GroupDialog({ trigger, onCreated }: Props) {
 
   function onSubmit(values: DeviceGroupInput) {
     startTransition(async () => {
-      const result = await createDeviceGroup(values);
+      const result = await createDeviceGroup(orgId, values);
       if (!result.ok) return void toast.error(result.error);
       toast.success("Group created");
       form.reset();

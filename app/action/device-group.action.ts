@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { run } from "@/lib/action";
-import { assertClient } from "@/lib/auth";
+import { assertClient, assertClientOrAdmin } from "@/lib/auth";
 import { DeviceGroupSchema, type DeviceGroupInput } from "@/servers/validators/monitoring.validator";
 import { DeviceGroupService } from "@/servers/services/device-group.service";
 
@@ -11,11 +11,11 @@ const refresh = () => {
   revalidatePath("/dashboard/devices/new");
 };
 
-export async function createDeviceGroup(raw: DeviceGroupInput) {
+export async function createDeviceGroup(orgId: number, raw: DeviceGroupInput) {
   return run(async () => {
-    const { orgId } = await assertClient();
+    const { orgId: resolvedOrgId } = await assertClientOrAdmin(orgId);
     const input = DeviceGroupSchema.parse(raw);
-    const group = await DeviceGroupService.create(orgId, input.name);
+    const group = await DeviceGroupService.create(resolvedOrgId, input.name);
     refresh();
     return { id: group.id, name: group.name };
   });

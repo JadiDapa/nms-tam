@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { run } from "@/lib/action";
-import { assertClient } from "@/lib/auth";
+import { assertClient, assertClientOrAdmin } from "@/lib/auth";
 import {
   type CreateDeviceInput,
   type TestDeviceInput,
@@ -33,10 +33,10 @@ export async function createDevice(input: CreateDeviceInput) {
   });
 }
 
-export async function updateDevice(deviceId: number, input: UpdateDeviceInput) {
+export async function updateDevice(orgId: number, deviceId: number, input: UpdateDeviceInput) {
   return run(async () => {
-    const { user, orgId } = await assertClient();
-    await DeviceMonitorService.update(user, orgId, deviceId, input);
+    const { user, orgId: resolvedOrgId } = await assertClientOrAdmin(orgId);
+    await DeviceMonitorService.update(user, resolvedOrgId, deviceId, input);
     refresh(deviceId);
   });
 }

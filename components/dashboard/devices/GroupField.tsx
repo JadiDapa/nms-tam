@@ -9,6 +9,7 @@ import GroupDialog from "./GroupDialog";
 export type GroupOption = { id: number; name: string };
 
 type Props = {
+  orgId: number;
   groups: GroupOption[];
   value: number | null | undefined;
   onChange: (groupId: number | null) => void;
@@ -19,7 +20,7 @@ const UNGROUPED = "none";
 
 // The "Group" picker shared by the add-device wizard and the settings form: pick an existing group,
 // leave it ungrouped, or create a new one inline without leaving the form.
-export default function GroupField({ groups, value, onChange, error }: Props) {
+export default function GroupField({ orgId, groups, value, onChange, error }: Props) {
   return (
     <FormField label="Group" optional error={error} hint="Where this device shows up on the device list.">
       <div className="flex gap-2">
@@ -37,6 +38,7 @@ export default function GroupField({ groups, value, onChange, error }: Props) {
           </SelectContent>
         </Select>
         <GroupDialog
+          orgId={orgId}
           onCreated={(g) => onChange(g.id)}
           trigger={
             <Button type="button" variant="outline" size="icon" aria-label="New group">

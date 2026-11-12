@@ -36,6 +36,7 @@ import {
 import type { EngineTestResult } from "@/servers/engine/engine-types";
 
 type Props = {
+  orgId: number;
   groups: GroupOption[];
   // preselected when arriving from a group's own "Add device" button
   defaultGroupId?: number | null;
@@ -53,7 +54,7 @@ const STEP_FIELDS: Record<number, (keyof CreateDeviceInput)[]> = {
   2: ["polling"],
 };
 
-export default function DeviceWizard({ groups, defaultGroupId, minPollIntervalSec, used, limit }: Props) {
+export default function DeviceWizard({ orgId, groups, defaultGroupId, minPollIntervalSec, used, limit }: Props) {
   const [step, setStep] = useState(0);
   const [tcpText, setTcpText] = useState("");
   const [testing, startTesting] = useTransition();
@@ -195,7 +196,7 @@ export default function DeviceWizard({ groups, defaultGroupId, minPollIntervalSe
                 name="groupId"
                 control={form.control}
                 render={({ field }) => (
-                  <GroupField groups={groups} value={field.value} onChange={field.onChange} error={errors.groupId?.message} />
+                  <GroupField orgId={orgId} groups={groups} value={field.value} onChange={field.onChange} error={errors.groupId?.message} />
                 )}
               />
             </div>

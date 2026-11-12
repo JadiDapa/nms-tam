@@ -29,6 +29,7 @@ export default async function NewDevicePage({ searchParams }: Props) {
     <main className="w-full space-y-6">
       <PageHeader title="Add Device" subtitle="Test it for real, then save it." />
       <DeviceWizard
+        orgId={orgId}
         groups={groups.map((g) => ({ id: g.id, name: g.name }))}
         defaultGroupId={defaultGroupId}
         minPollIntervalSec={ent.minPollIntervalSec}

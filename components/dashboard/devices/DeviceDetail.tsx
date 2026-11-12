@@ -33,7 +33,8 @@ type Props = {
   iface?: string;
   // where this device's own links point; defaults to the client's own device page
   basePath?: string;
-  // an admin looking at a client's device: hides mutating actions and the settings tab
+  // an admin looking at a client's device: hides the quick actions (poll/test/pause/delete) and
+  // interface-monitoring toggles, but the Settings tab still lets an admin update the device
   readOnly?: boolean;
 };
 
@@ -79,7 +80,7 @@ function downsample(items: MetricBucket[], target = 30): (number | null)[] {
 
 // One device: header and tabs on top, the chosen tab below. (The page only checks who is asking and hands over here.)
 export default async function DeviceDetail({ orgId, id, tab: rawTab, range, iface, basePath = "/dashboard/devices", readOnly = false }: Props) {
-  const tabs = readOnly ? TABS.filter((t) => t.key !== "settings") : TABS;
+  const tabs = TABS;
   const tab = tabs.some((t) => t.key === rawTab) ? rawTab! : "overview";
 
   let detail;
@@ -117,7 +118,7 @@ export default async function DeviceDetail({ orgId, id, tab: rawTab, range, ifac
       {tab === "metrics" && <MetricsTab orgId={orgId} id={id} range={range} basePath={basePath} />}
       {tab === "interfaces" && <InterfacesTab orgId={orgId} id={id} range={range} selected={iface} canChange={!readOnly && ent.live} basePath={basePath} />}
       {tab === "incidents" && <IncidentsTab orgId={orgId} id={id} />}
-      {!readOnly && tab === "settings" && (
+      {tab === "settings" && (
         <SettingsTab orgId={orgId} id={id} status={status} canChange={ent.live} minPollIntervalSec={ent.minPollIntervalSec} />
       )}
     </main>
@@ -379,6 +380,7 @@ async function SettingsTab({ orgId, id, status, canChange, minPollIntervalSec }:
 
   return (
     <DeviceSettingsForm
+      orgId={orgId}
       deviceId={id}
       device={status.device}
       latitude={owned.latitude}

@@ -31,6 +31,7 @@ import {
 import type { EngineDevice } from "@/servers/engine/engine-types";
 
 type Props = {
+  orgId: number;
   deviceId: number;
   device: EngineDevice;
   // where the device is on the map (kept by this app, not the engine)
@@ -42,7 +43,7 @@ type Props = {
   canChange: boolean;
 };
 
-export default function DeviceSettingsForm({ deviceId, device, latitude, longitude, groupId, groups, minPollIntervalSec, canChange }: Props) {
+export default function DeviceSettingsForm({ orgId, deviceId, device, latitude, longitude, groupId, groups, minPollIntervalSec, canChange }: Props) {
   const [isPending, startTransition] = useTransition();
   const [tcpText, setTcpText] = useState(device.tcpPorts.join(", "));
   const router = useRouter();
@@ -78,7 +79,7 @@ export default function DeviceSettingsForm({ deviceId, device, latitude, longitu
 
   function onSubmit(input: UpdateDeviceInput) {
     startTransition(async () => {
-      const r = await updateDevice(deviceId, { ...input, location: input.location || null });
+      const r = await updateDevice(orgId, deviceId, { ...input, location: input.location || null });
       if (!r.ok) return void toast.error(r.error);
       toast.success("Settings saved");
       router.refresh();
@@ -123,7 +124,7 @@ export default function DeviceSettingsForm({ deviceId, device, latitude, longitu
             name="groupId"
             control={form.control}
             render={({ field }) => (
-              <GroupField groups={groups} value={field.value} onChange={field.onChange} error={errors.groupId?.message} />
+              <GroupField orgId={orgId} groups={groups} value={field.value} onChange={field.onChange} error={errors.groupId?.message} />
             )}
           />
           <div className="space-y-2 sm:col-span-2">
