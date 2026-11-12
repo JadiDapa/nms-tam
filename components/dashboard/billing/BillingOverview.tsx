@@ -1,54 +1,62 @@
-import { format } from "date-fns";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { addMonths, monthlyCost } from "@/servers/billing/pricing";
-import { paymentsByRange } from "@/servers/billing/payment-stats";
-import { resolveDateRange } from "@/lib/date-range";
-import { BillingRequestService } from "@/servers/services/billing-request.service";
-import { PaymentService } from "@/servers/services/payment.service";
-import { PlanService } from "@/servers/services/plan.service";
+// import { format } from "date-fns";
+// import { Card, CardContent } from "@/components/ui/card";
+// import { Button } from "@/components/ui/button";
+// import { addMonths, monthlyCost } from "@/servers/billing/pricing";
+// import { paymentsByRange } from "@/servers/billing/payment-stats";
+// import { resolveDateRange } from "@/lib/date-range";
+// import { BillingRequestService } from "@/servers/services/billing-request.service";
+// import { PaymentService } from "@/servers/services/payment.service";
+// import { PlanService } from "@/servers/services/plan.service";
 import { SubscriptionService } from "@/servers/services/subscription.service";
-import DateRangePicker from "../DateRangePicker";
+// import DateRangePicker from "../DateRangePicker";
 import PageHeader from "../PageHeader";
-import BillingRequestDialog from "./BillingRequestDialog";
-import BillingStats from "./BillingStats";
-import PaymentList from "./PaymentList";
-import PaymentsChart from "./PaymentsChart";
-import PlanCard from "./PlanCard";
-import RequestsCard from "./RequestsCard";
+// import BillingRequestDialog from "./BillingRequestDialog";
+// import BillingStats from "./BillingStats";
+// import PaymentList from "./PaymentList";
+// import PaymentsChart from "./PaymentsChart";
+// import PlanCard from "./PlanCard";
+// import RequestsCard from "./RequestsCard";
 
-// The client's billing page: plan and usage on top, payments and requests in the middle, the full history below.
-export default async function BillingOverview({ orgId, query }: { orgId: number; query: { range?: string; from?: string; to?: string } }) {
-  // Payments are sparse day-to-day, so default to "this month" rather than "today" (only for the chart's own picker).
-  const range = resolveDateRange({ range: "month", ...query });
-  const [ent, usage, sub, plans, payments, requests] = await Promise.all([
-    SubscriptionService.getEntitlements(orgId),
-    SubscriptionService.usage(orgId),
-    SubscriptionService.getByOrg(orgId),
-    PlanService.list({ activeOnly: true }),
-    PaymentService.list({ orgId }),
-    BillingRequestService.list({ orgId }),
-  ]);
-
-  const now = new Date();
-  const paidRows = payments.filter((p) => !p.voidedAt);
-
-  // The paid period runs from when the latest payment starts covering to the paid-until date.
-  const cover = paidRows
-    .filter((p) => p.coversFrom && p.coversUntil)
-    .sort((a, b) => b.coversUntil!.getTime() - a.coversUntil!.getTime())[0];
-  const periodEnd = sub?.currentPeriodEnd ?? now;
-  const periodStart = cover?.coversFrom && cover.coversFrom < periodEnd ? cover.coversFrom : addMonths(periodEnd, -1);
-
-  const span = periodEnd.getTime() - periodStart.getTime();
-  const elapsedPct = Math.round(Math.min(1, Math.max(0, span > 0 ? (now.getTime() - periodStart.getTime()) / span : 1)) * 100);
-
-  const cost = sub ? monthlyCost(sub.plan, sub.extraSlots) : 0;
-  const extraSlotPrice = sub?.plan.extraSlotPrice ?? 0;
+// Money/subscription sections (plan cost, payments, billing requests) are temporarily deactivated below.
+// Only non-money usage info (devices/users) remains.
+export default async function BillingOverview({ orgId }: { orgId: number; query: { range?: string; from?: string; to?: string } }) {
+  const usage = await SubscriptionService.usage(orgId);
 
   return (
     <main className="w-full space-y-6">
       <PageHeader title="Billing" subtitle="Your plan, what you use, and your payment history." />
+
+      <p className="text-muted-foreground text-sm">
+        Devices in use: {usage.devices} · Team members: {usage.users}
+      </p>
+
+      {/*
+      // Payments are sparse day-to-day, so default to "this month" rather than "today" (only for the chart's own picker).
+      const range = resolveDateRange({ range: "month", ...query });
+      const [ent, usage, sub, plans, payments, requests] = await Promise.all([
+        SubscriptionService.getEntitlements(orgId),
+        SubscriptionService.usage(orgId),
+        SubscriptionService.getByOrg(orgId),
+        PlanService.list({ activeOnly: true }),
+        PaymentService.list({ orgId }),
+        BillingRequestService.list({ orgId }),
+      ]);
+
+      const now = new Date();
+      const paidRows = payments.filter((p) => !p.voidedAt);
+
+      // The paid period runs from when the latest payment starts covering to the paid-until date.
+      const cover = paidRows
+        .filter((p) => p.coversFrom && p.coversUntil)
+        .sort((a, b) => b.coversUntil!.getTime() - a.coversUntil!.getTime())[0];
+      const periodEnd = sub?.currentPeriodEnd ?? now;
+      const periodStart = cover?.coversFrom && cover.coversFrom < periodEnd ? cover.coversFrom : addMonths(periodEnd, -1);
+
+      const span = periodEnd.getTime() - periodStart.getTime();
+      const elapsedPct = Math.round(Math.min(1, Math.max(0, span > 0 ? (now.getTime() - periodStart.getTime()) / span : 1)) * 100);
+
+      const cost = sub ? monthlyCost(sub.plan, sub.extraSlots) : 0;
+      const extraSlotPrice = sub?.plan.extraSlotPrice ?? 0;
 
       {sub ? (
         <div className="grid gap-4 lg:grid-cols-5">
@@ -137,6 +145,7 @@ export default async function BillingOverview({ orgId, query }: { orgId: number;
           voidedAt: p.voidedAt,
         }))}
       />
+      */}
     </main>
   );
 }

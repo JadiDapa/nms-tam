@@ -50,7 +50,8 @@ export const overviewItems: MenuItem[] = [
   { title: "Users", url: "/dashboard/admin/users", icon: Users, roles: ["ADMIN"], placement: "rail" },
   { title: "Engine", url: "/dashboard/admin/engine", icon: Activity, roles: ["ADMIN"], placement: "rail" },
   { title: "Audit Log", url: "/dashboard/admin/audit", icon: ScrollText, roles: ["ADMIN"], placement: "rail" },
-  { title: "Simulate", url: "/dashboard/admin/simulate", icon: Waypoints, roles: ["ADMIN"], placement: "rail" },
+  // Simulate temporarily disabled: menu entry hidden, page access blocked in proxy.ts.
+  // { title: "Simulate", url: "/dashboard/admin/simulate", icon: Waypoints, roles: ["ADMIN"], placement: "rail" },
 ];
 
 export const settingsItems: MenuItem[] = [
